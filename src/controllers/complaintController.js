@@ -210,6 +210,26 @@ const updateComplaintStatus = async (req, res, next) => {
 };
 
 
+// GET /complaints  (ADMIN)
+const getAllComplaints = async (req, res, next) => {
+  try {
+    const complaints = await Complaint.find()
+      .sort({ createdAt: -1 })
+      .populate("citizen", "name email")
+      .populate("assignedOfficer", "name email")
+      .populate("department", "name");
+
+    res.status(200).json({
+      success: true,
+      count: complaints.length,
+      data: complaints,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 
 // assign complaint to officer
 const assignComplaintToOfficer = async (req, res, next) => {
@@ -289,6 +309,36 @@ const assignComplaintToOfficer = async (req, res, next) => {
 };
 
 
+// GET complaint details for OFFICER
+const getComplaintForOfficer = async (req, res, next) => {
+  try {
+    const complaint = await Complaint.findById(req.params.id)
+      .populate("citizen", "name email")
+      .populate("department", "name");
+
+    if (!complaint) {
+      res.status(404);
+      throw new Error("Complaint not found");
+    }
+
+    // officer ownership check
+    if (
+      complaint.assignedOfficer?.toString() !== req.user.id
+    ) {
+      res.status(403);
+      throw new Error("You are not authorized to view this complaint");
+    }
+
+    res.status(200).json({
+      success: true,
+      data: complaint,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 
 module.exports = {
   createComplaint,
@@ -297,5 +347,7 @@ module.exports = {
   getAssignedComplaints,
   updateComplaintStatus,
   assignComplaintToOfficer,
+  getAllComplaints,
+  getComplaintForOfficer
 };
 

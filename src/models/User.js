@@ -33,17 +33,16 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
-    // Default location 
+    // 📍 Location waisa hi hai jaisa pehle tha
     location: {
-      state: {
-        type: String,
-      },
-      city: {
-        type: String,
-      },
-      ward: {
-        type: String,
-      },
+      state: { type: String },
+      city: { type: String },
+      ward: { type: String },
+    },
+
+    profilePhoto: {
+      type: String,
+      default: "" 
     },
   },
   {

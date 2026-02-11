@@ -134,8 +134,54 @@ const getUserProfile = async (req, res, next) => {
 };
 
 
+const updateProfile = async (req, res, next) => {
+  try {
+    // 1. User ko dhoondein (req.user.userId authMiddleware se aayega)
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    // 2. Text Fields Update karein
+    // Agar body mein data hai to update karo, nahi to purana rehne do
+    user.name = req.body.name || user.name;
+    
+    // Nested Location fields update
+    if (req.body.state) user.location.state = req.body.state;
+    if (req.body.city) user.location.city = req.body.city;
+    if (req.body.ward) user.location.ward = req.body.ward;
+
+    // 3. Photo Update karein (Agar file upload hui hai)
+    if (req.file) {
+      // Database mein hum sirf file ka path save karte hain
+      user.profilePhoto = `/uploads/profiles/${req.file.filename}`;
+    }
+
+    // 4. Save karein
+    const updatedUser = await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        location: updatedUser.location,
+        profilePhoto: updatedUser.profilePhoto, 
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
+  updateProfile
 };

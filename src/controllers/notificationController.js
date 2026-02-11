@@ -86,9 +86,77 @@ const getUnreadNotificationCount = async (
 };
 
 
+const sendBulkNotification = async (req, res, next) => {
+  try {
+    const { target, departmentId, message } = req.body;
+
+    if (!message) {
+      res.status(400);
+      throw new Error("Message is required");
+    }
+
+    let users = [];
+
+    // Decide target users
+    if (target === "all") {
+      users = await User.find({}, "_id");
+    }
+
+    if (target === "officers") {
+      users = await User.find(
+        { role: "officer" },
+        "_id"
+      );
+    }
+
+    if (target === "department") {
+      if (!departmentId) {
+        res.status(400);
+        throw new Error("Department is required");
+      }
+
+      users = await User.find(
+        {
+          role: "officer",
+          department: departmentId,
+        },
+        "_id"
+      );
+    }
+
+    if (!users.length) {
+      return res.status(200).json({
+        success: true,
+        message: "No users found for this target",
+      });
+    }
+
+    // Prepare notifications
+    const notifications = users.map((user) => ({
+      user: user._id,
+      message,
+      isRead: false,
+    }));
+
+    // Bulk insert
+    await Notification.insertMany(notifications);
+
+    res.status(201).json({
+      success: true,
+      count: notifications.length,
+      message: "Bulk notification sent successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 
 module.exports = {
   getMyNotifications,
   markNotificationAsRead,
   getUnreadNotificationCount,
+  sendBulkNotification
 };

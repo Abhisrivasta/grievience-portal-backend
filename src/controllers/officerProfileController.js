@@ -2,6 +2,7 @@ const OfficerProfile = require("../models/OfficerProfile");
 const User = require("../models/User");
 const Department = require("../models/Department");
 
+
 /**
  * @desc    Create or update officer profile
  * @route   POST /api/officers/profile
@@ -65,7 +66,6 @@ const upsertOfficerProfile = async (req, res, next) => {
         isActive,
       });
     }
-
     await profile.save();
 
     res.status(200).json({

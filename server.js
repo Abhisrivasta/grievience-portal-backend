@@ -1,5 +1,6 @@
 const express = require("express")
 const dotenv = require("dotenv")
+const path = require("path"); 
 const cors = require("cors")
 const morgan = require("morgan")
 const connectDB = require("./src/config/db")
@@ -32,6 +33,7 @@ app.use(cors())
 app.use(express.json())
 app.use(morgan("dev"))
 app.use(logger);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 
 //routes

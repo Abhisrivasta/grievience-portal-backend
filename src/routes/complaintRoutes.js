@@ -11,6 +11,8 @@ const {
   getAssignedComplaints,
   updateComplaintStatus,
   assignComplaintToOfficer,
+  getAllComplaints,
+  getComplaintForOfficer
 } = require("../controllers/complaintController");
 
 //create complaint
@@ -43,6 +45,22 @@ router.put(
   roleMiddleware("admin"),
   assignComplaintToOfficer
 );
+
+router.get(
+  "/",
+  authMiddleware,
+  roleMiddleware("admin"),
+  getAllComplaints
+);
+
+// Officer complaint detail
+router.get(
+  "/officer/:id",
+  authMiddleware,
+  roleMiddleware("officer"),
+  getComplaintForOfficer
+);
+
 
 //update complaint status
 router.put(
