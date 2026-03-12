@@ -76,6 +76,23 @@ const submitFeedback = async (req, res, next) => {
   }
 };
 
+
+const getAllFeedbacks = async (req, res, next) => {
+  try {
+    const feedbacks = await Feedback.find()
+      .populate("complaint", "title")
+      .populate("citizen", "name email");
+
+    res.status(200).json({
+      success: true,
+      data: feedbacks,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   submitFeedback,
+  getAllFeedbacks,
 };

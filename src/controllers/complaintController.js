@@ -213,8 +213,18 @@ const updateComplaintStatus = async (req, res, next) => {
 // GET /complaints  (ADMIN)
 const getAllComplaints = async (req, res, next) => {
   try {
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+
+    const skip = (page - 1) * limit;
+
+    const totalComplaints = await Complaint.countDocuments();
+
     const complaints = await Complaint.find()
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .populate("citizen", "name email")
       .populate("assignedOfficer", "name email")
       .populate("department", "name");
@@ -222,14 +232,16 @@ const getAllComplaints = async (req, res, next) => {
     res.status(200).json({
       success: true,
       count: complaints.length,
+      total: totalComplaints,
+      currentPage: page,
+      totalPages: Math.ceil(totalComplaints / limit),
       data: complaints,
     });
+
   } catch (error) {
     next(error);
   }
 };
-
-
 
 // assign complaint to officer
 const assignComplaintToOfficer = async (req, res, next) => {

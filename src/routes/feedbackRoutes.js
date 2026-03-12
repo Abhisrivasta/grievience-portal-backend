@@ -6,6 +6,7 @@ const roleMiddleware = require("../middlewares/roleMiddleware");
 
 const {
   submitFeedback,
+  getAllFeedbacks,
 } = require("../controllers/feedbackController");
 
 // Submit feedback for resolved complaint
@@ -14,6 +15,13 @@ router.post(
   authMiddleware,
   roleMiddleware("citizen"),
   submitFeedback
+);
+
+router.get(
+  "/",
+  authMiddleware,
+  roleMiddleware("admin"),
+  getAllFeedbacks
 );
 
 module.exports = router;

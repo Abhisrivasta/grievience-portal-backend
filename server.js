@@ -27,9 +27,16 @@ dotenv.config()
 //create express app
 const app = express()
 
-
 //Middleware
-app.use(cors())
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://grievience-portal-vqu8.vercel.app"
+    ],
+    credentials: true
+  })
+);
 app.use(express.json())
 app.use(morgan("dev"))
 app.use(logger);
@@ -55,6 +62,9 @@ app.get("/",(req,res) => {
 
 // Connect Database
 connectDB();
+
+console.log("PORT:", process.env.PORT);
+console.log("MONGO_URI:", process.env.MONGO_URI);
 
 // Error Handler Middleware
 app.use(errorHandler);
