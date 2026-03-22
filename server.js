@@ -18,9 +18,6 @@ const officerRoutes = require("./src/routes/officerRoutes");
 
 
 
-
-
-
 //load environment variables 
 dotenv.config()
 
