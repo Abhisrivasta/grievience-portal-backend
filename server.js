@@ -26,7 +26,8 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://grievience-portal-vqu8.vercel.app"
+  "https://grievience-portal-vqu8.vercel.app", // preview
+  "https://grievience-portal.vercel.app"       // main domain
 ];
 
 app.use(
@@ -41,7 +42,6 @@ app.use(
     credentials: true,
   })
 );
-
 
 
 app.use(express.json());
