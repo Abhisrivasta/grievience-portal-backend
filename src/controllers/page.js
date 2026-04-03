@@ -35,6 +35,7 @@ const createPage = async (req, res, next) => {
 
 
 
+
 const getHomePage = async (req, res, next) => {
   try {
     const page = await Page.findOne({ slug: "home" });
