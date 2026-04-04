@@ -9,11 +9,6 @@ const {
   getOfficersWithProfiles,
 } = require("../controllers/officerProfileController");
 
-/**
- * @route   POST /api/officers/profile
- * @desc    Create or update officer profile
- * @access  Private (Admin)
- */
 router.post(
   "/profile",
   authMiddleware,
@@ -21,11 +16,6 @@ router.post(
   upsertOfficerProfile
 );
 
-/**
- * @route   GET /api/officers
- * @desc    Get officers with profiles
- * @access  Private (Admin)
- */
 router.get(
   "/",
   authMiddleware,

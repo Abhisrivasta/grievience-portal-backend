@@ -86,32 +86,8 @@ const updatePage = async (req, res, next) => {
 };
 
 
-
-const deletePage = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const deletedPage = await Page.findByIdAndDelete(id);
-
-    if (!deletedPage) {
-      res.status(404);
-      throw new Error("Page not found");
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Page deleted successfully",
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
-
-
 module.exports = {
   createPage,
   getHomePage,
   updatePage,
-  deletePage,
 };
