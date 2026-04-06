@@ -1,6 +1,15 @@
-// models/HomePage.js
-
 const mongoose = require("mongoose");
+
+const featureSchema = new mongoose.Schema({
+  icon: String,
+  title: String,
+  desc: String,
+});
+
+const statSchema = new mongoose.Schema({
+  label: String,
+  value: String,
+});
 
 const homePageSchema = new mongoose.Schema(
   {
@@ -9,13 +18,16 @@ const homePageSchema = new mongoose.Schema(
       required: true,
     },
 
-    description: {
-      type: String,
-    },
+    description: String,
 
-    contents: {
-      type: String,
-    },
+    contents: String,
+
+    features: [featureSchema],
+
+    stats: [statSchema],
+
+    ctaText: String,
+    ctaSubText: String,
   },
   { timestamps: true }
 );

@@ -280,43 +280,43 @@ const updateComplaintStatus = async (req, res, next) => {
 // GET /complaints  (ADMIN)
 const getAllComplaints = async (req, res, next) => {
   try {
-
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 5;
     const skip = (page - 1) * limit;
 
-  
     let filter = {};
 
+    // Status filter
     if (req.query.status) {
-      filter.status = req.query.status; // e.g. pending, resolved
-    }
+  filter.status = { $regex: `^${req.query.status}$`, $options: "i" };
+}
 
+    // Department filter
     if (req.query.department) {
-      filter.department = req.query.department; // department ID
+      filter.department = req.query.department;
     }
 
+    // Assigned officer filter
     if (req.query.assignedOfficer) {
       filter.assignedOfficer = req.query.assignedOfficer;
     }
 
-
+    // ✅ Search ko $and ke saath lagao taaki baaki filters bhi kaam karein
     if (req.query.search) {
-      const search = req.query.search;
-
+      const search = req.query.search.trim();
       filter.$or = [
         { title: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
       ];
     }
 
+    // Sort
     let sort = {};
-
     if (req.query.sortBy) {
       const order = req.query.order === "asc" ? 1 : -1;
       sort[req.query.sortBy] = order;
     } else {
-      sort.createdAt = -1; // default latest
+      sort.createdAt = -1;
     }
 
     const totalComplaints = await Complaint.countDocuments(filter);
@@ -329,7 +329,6 @@ const getAllComplaints = async (req, res, next) => {
       .populate("assignedOfficer", "name email")
       .populate("department", "name");
 
-   
     res.status(200).json({
       success: true,
       count: complaints.length,

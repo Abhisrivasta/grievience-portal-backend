@@ -1,197 +1,186 @@
 const Complaint = require("../models/Complaint");
 const Feedback = require("../models/Feedback");
-const {parser} = require("json2csv")
+const { Parser } = require("json2csv");
+
+
+
+const buildQuery = (queryParams) => {
+  const {
+    status,
+    department,
+    fromDate,
+    toDate,
+    search,
+  } = queryParams;
+
+  const query = {};
+
+  if (status) query.status = status;
+
+  if (department) {
+    query.department = new require("mongoose").Types.ObjectId(department);
+  }
+
+  if (fromDate || toDate) {
+    query.createdAt = {};
+    if (fromDate) query.createdAt.$gte = new Date(fromDate);
+    if (toDate) query.createdAt.$lte = new Date(toDate);
+  }
+
+  if (search) {
+    query.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  return query;
+};
+
+
 
 // Get grievance system overview metrics
-
 const getOverviewMetrics = async (req, res, next) => {
   try {
-    const totalComplaints =
-      await Complaint.countDocuments();
-
-    const pendingComplaints =
-      await Complaint.countDocuments({
-        status: "Pending",
-      });
-
-    const inProgressComplaints =
-      await Complaint.countDocuments({
-        status: "In Progress",
-      });
-
-    const resolvedComplaints =
-      await Complaint.countDocuments({
-        status: "Resolved",
-      });
-
-    const avgRatingData =
-      await Feedback.aggregate([
-        {
-          $group: {
-            _id: null,
-            averageRating: {
-              $avg: "$rating",
-            },
+    const [metrics] = await Complaint.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          pending: {
+            $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] },
+          },
+          inProgress: {
+            $sum: { $cond: [{ $eq: ["$status", "In Progress"] }, 1, 0] },
+          },
+          resolved: {
+            $sum: { $cond: [{ $eq: ["$status", "Resolved"] }, 1, 0] },
           },
         },
-      ]);
+      },
+    ]);
 
-    const averageRating =
-      avgRatingData.length > 0
-        ? avgRatingData[0].averageRating
-        : 0;
+    const rating = await Feedback.aggregate([
+      { $group: { _id: null, avg: { $avg: "$rating" } } },
+    ]);
 
-    res.status(200).json({
+    res.json({
       success: true,
       data: {
-        totalComplaints,
-        pendingComplaints,
-        inProgressComplaints,
-        resolvedComplaints,
-        averageRating: Number(
-          averageRating.toFixed(1)
-        ),
+        totalComplaints: metrics?.total || 0,
+        pendingComplaints: metrics?.pending || 0,
+        inProgressComplaints: metrics?.inProgress || 0,
+        resolvedComplaints: metrics?.resolved || 0,
+        averageRating: rating[0]?.avg?.toFixed(1) || 0,
       },
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
 // Get complaint analytics with filters
- 
 const getComplaintAnalytics = async (req, res, next) => {
   try {
-    const { status, fromDate, toDate, department } =
-      req.query;
+    const { sortBy = "count", order = "desc" } = req.query;
 
-    const matchStage = {};
+    const match = buildQuery(req.query);
 
-    if (status) {
-      matchStage.status = status;
-    }
-
-    if (department) {
-      matchStage.department =
-        new require("mongoose").Types.ObjectId(
-          department
-        );
-    }
-
-    if (fromDate || toDate) {
-      matchStage.createdAt = {};
-      if (fromDate) {
-        matchStage.createdAt.$gte =
-          new Date(fromDate);
-      }
-      if (toDate) {
-        matchStage.createdAt.$lte =
-          new Date(toDate);
-      }
-    }
-
-    const analytics = await Complaint.aggregate([
-      { $match: matchStage },
+    const data = await Complaint.aggregate([
+      { $match: match },
       {
         $group: {
           _id: "$status",
           count: { $sum: 1 },
         },
       },
-      { $sort: { count: -1 } },
+      {
+        $sort: {
+          [sortBy]: order === "asc" ? 1 : -1,
+        },
+      },
     ]);
 
-    res.status(200).json({
+    res.json({
       success: true,
-      filtersApplied: {
-        status,
-        department,
-        fromDate,
-        toDate,
-      },
-      data: analytics,
+      data,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
 
 //export to csv
-
 const exportComplaintsCSV = async (req, res, next) => {
   try {
-    const complaints = await Complaint.find()
+    const { sortBy = "createdAt", order = "desc" } = req.query;
+
+    const query = buildQuery(req.query);
+
+    const complaints = await Complaint.find(query)
+      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
       .populate("citizen", "name email")
       .populate("assignedOfficer", "name email")
       .populate("department", "name")
       .lean();
 
-    const data = complaints.map((c) => ({
-      ComplaintID: c._id.toString(),
+    const formatted = complaints.map((c) => ({
+      ID: c._id,
       Title: c.title,
-      Category: c.category,
       Status: c.status,
       Priority: c.priority,
       Department: c.department?.name || "N/A",
-      CitizenName: c.citizen?.name || "N/A",
-      CitizenEmail: c.citizen?.email || "N/A",
-      OfficerName:
-        c.assignedOfficer?.name || "N/A",
+      Citizen: c.citizen?.name || "N/A",
+      Officer: c.assignedOfficer?.name || "N/A",
       CreatedAt: c.createdAt,
-      UpdatedAt: c.updatedAt,
     }));
 
     const parser = new Parser();
-    const csv = parser.parse(data);
+    const csv = parser.parse(formatted);
 
-    res.header(
-      "Content-Type",
-      "text/csv"
-    );
-    res.attachment(
-      "complaints-report.csv"
-    );
-
-    return res.send(csv);
-  } catch (error) {
-    next(error);
+    res.header("Content-Type", "text/csv");
+    res.attachment("complaints-report.csv");
+    res.send(csv);
+  } catch (err) {
+    next(err);
   }
 };
 
-
-/**
- * @desc    Get officer performance report
- * @route   GET /api/reports/officers/performance
- * @access  Private (Admin)
- */
-const getOfficerPerformanceReport = async (
-  req,
-  res,
-  next
-) => {
+const getOfficerPerformanceReport = async (req, res, next) => {
   try {
-    const report = await Complaint.aggregate([
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "resolvedCount",
+      order = "desc",
+    } = req.query;
+
+    const skip = (page - 1) * limit;
+
+    const pipeline = [
       {
         $match: {
           assignedOfficer: { $ne: null },
-          status: "Resolved",
         },
       },
+
       {
         $group: {
           _id: "$assignedOfficer",
-          resolvedCount: { $sum: 1 },
+          resolvedCount: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "Resolved"] }, 1, 0],
+            },
+          },
           avgResolutionTime: {
             $avg: {
-              $subtract: [
-                "$updatedAt",
-                "$createdAt",
-              ],
+              $subtract: ["$updatedAt", "$createdAt"],
             },
           },
         },
       },
+
       {
         $lookup: {
           from: "users",
@@ -201,54 +190,66 @@ const getOfficerPerformanceReport = async (
         },
       },
       { $unwind: "$officer" },
+
       {
         $lookup: {
           from: "feedbacks",
           localField: "_id",
-          foreignField: "complaint",
-          as: "feedback",
+          foreignField: "assignedOfficer",
+          as: "feedbacks",
         },
       },
+
       {
         $addFields: {
-          averageRating: {
-            $avg: "$feedback.rating",
-          },
+          averageRating: { $avg: "$feedbacks.rating" },
         },
       },
+
       {
         $project: {
-          officerId: "$officer._id",
           officerName: "$officer.name",
           officerEmail: "$officer.email",
           resolvedCount: 1,
           avgResolutionTime: {
-            $divide: [
-              "$avgResolutionTime",
-              1000 * 60 * 60 * 24,
-            ],
+            $divide: ["$avgResolutionTime", 1000 * 60 * 60 * 24],
           },
-          averageRating: {
-            $ifNull: [
-              "$averageRating",
-              0,
-            ],
-          },
+          averageRating: { $ifNull: ["$averageRating", 0] },
         },
       },
-      { $sort: { resolvedCount: -1 } },
-    ]);
 
-    res.status(200).json({
+      {
+        $sort: {
+          [sortBy]: order === "asc" ? 1 : -1,
+        },
+      },
+
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: Number(limit) },
+          ],
+          total: [{ $count: "count" }],
+        },
+      },
+    ];
+
+    const result = await Complaint.aggregate(pipeline);
+
+    res.json({
       success: true,
-      data: report,
+      data: result[0].data,
+      total: result[0].total[0]?.count || 0,
+      page: Number(page),
+      totalPages: Math.ceil(
+        (result[0].total[0]?.count || 0) / limit
+      ),
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
-
-
 
 module.exports = {
   getOverviewMetrics,

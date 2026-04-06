@@ -11,36 +11,18 @@ const {
   getOfficerPerformanceReport,
 } = require("../controllers/reportController");
 
-// Overview metrics
-router.get(
-  "/overview",
-  authMiddleware,
-  roleMiddleware("admin"),
-  getOverviewMetrics
-);
+router.use(authMiddleware, roleMiddleware("admin"));
 
-// Complaint analytics
-router.get(
-  "/complaints",
-  authMiddleware,
-  roleMiddleware("admin"),
-  getComplaintAnalytics
-);
 
-// Export complaints as CSV
-router.get(
-  "/export/csv",
-  authMiddleware,
-  roleMiddleware("admin"),
-  exportComplaintsCSV
-);
+router.get("/overview", getOverviewMetrics);
 
-// Officer performance report
-router.get(
-  "/officers/performance",
-  authMiddleware,
-  roleMiddleware("admin"),
-  getOfficerPerformanceReport
-);
+
+router.get("/complaints", getComplaintAnalytics);
+
+
+router.get("/export/csv", exportComplaintsCSV);
+
+
+router.get("/officers/performance", getOfficerPerformanceReport);
 
 module.exports = router;

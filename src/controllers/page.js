@@ -1,10 +1,17 @@
 const HomePage = require("../models/Page");
 
-// controllers/home.controller.js
-// ✅ Create or Update Home Page (Singleton)
+// ✅ UPSERT (Create or Update Homepage)
 const upsertHomePage = async (req, res, next) => {
   try {
-    const { title, description, contents } = req.body;
+    const {
+      title,
+      description,
+      contents,
+      features,
+      stats,
+      ctaText,
+      ctaSubText,
+    } = req.body;
 
     if (!title) {
       return res.status(400).json({
@@ -16,48 +23,57 @@ const upsertHomePage = async (req, res, next) => {
     let home = await HomePage.findOne();
 
     if (home) {
-      // 🔁 Update existing
-      home.title = title;
-      home.description = description;
-      home.contents = contents;
-
-      await home.save();
+      home = await HomePage.findByIdAndUpdate(
+        home._id,
+        {
+          title,
+          description,
+          contents,
+          features: features || [],
+          stats: stats || [],
+          ctaText,
+          ctaSubText,
+        },
+        { new: true }
+      );
     } else {
-      // 🆕 Create new
       home = await HomePage.create({
         title,
         description,
         contents,
+        features: features || [],
+        stats: stats || [],
+        ctaText,
+        ctaSubText,
       });
     }
 
     res.status(200).json({
       success: true,
+      message: "Home page saved successfully",
       data: home,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-// ✅ Get Home Page
 const getHomePage = async (req, res, next) => {
   try {
     const home = await HomePage.findOne();
 
-    if (!home) {
-      return res.status(404).json({
-        success: false,
-        message: "Home page not found",
-      });
-    }
-
     res.status(200).json({
       success: true,
-      data: home,
+      data: home || {
+        title: "",
+        description: "",
+        contents: "",
+        features: [],
+        stats: [],
+        ctaText: "",
+        ctaSubText: "",
+      },
     });
-
   } catch (error) {
     next(error);
   }
