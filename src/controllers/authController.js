@@ -2,96 +2,93 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const jwt = require("jsonwebtoken")
 
+
+const sendResponse = (res, status, message, data = {}) => {
+  res.status(status).json({
+    success: true,
+    message,
+    data,
+  });
+};
+
+const generateToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+};
+
+
+
 const registerUser = async (req, res, next) => {
   try {
-    const { name, email, password, location } = req.body;
+    let { name, email, password, location } = req.body;
 
-    // Basic validation
     if (!name || !email || !password) {
       res.status(400);
       throw new Error("Name, email and password are required");
     }
 
-    // Check if user already exists
+    email = email.toLowerCase().trim();
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       res.status(400);
-      throw new Error("User already exists with this email");
+      throw new Error("User already exists");
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    if (password.length < 6) {
+      res.status(400);
+      throw new Error("Password must be at least 6 characters");
+    }
 
-    // Create user (role defaults to citizen)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      location,
+      location: location || {},
     });
 
-    res.status(201).json({
-      success: true,
-      message: "Citizen registered successfully",
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
+    sendResponse(res, 201, "Registered successfully", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
     });
-  } catch (error) {
-    next(error);
+
+  } catch (err) {
+    next(err);
   }
 };
 
 //login user
-
 const loginUser = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
 
-    // Validate input
     if (!email || !password) {
       res.status(400);
-      throw new Error("Email and password are required");
+      throw new Error("Email and password required");
     }
 
-    // Find user and include password
+    email = email.toLowerCase().trim();
+
     const user = await User.findOne({ email }).select("+password");
 
-    if (!user) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       res.status(401);
-      throw new Error("Invalid email or password");
+      throw new Error("Invalid credentials");
     }
 
-    // Compare password
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const token = generateToken(user);
 
-    if (!isMatch) {
-      res.status(401);
-      throw new Error("Invalid email or password");
-    }
-
-    // Generate JWT
-    const token = jwt.sign(
-      {
-        userId: user._id,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
+    sendResponse(res, 200, "Login successful", {
       token,
       user: {
         id: user._id,
@@ -100,8 +97,9 @@ const loginUser = async (req, res, next) => {
         role: user.role,
       },
     });
-  } catch (error) {
-    next(error);
+
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -109,7 +107,6 @@ const loginUser = async (req, res, next) => {
 //get profile
 const getUserProfile = async (req, res, next) => {
   try {
-    // req.user is attached by authMiddleware
     const user = await User.findById(req.user.id);
 
     if (!user) {
@@ -117,26 +114,22 @@ const getUserProfile = async (req, res, next) => {
       throw new Error("User not found");
     }
 
-    res.status(200).json({
-      success: true,
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        location: user.location,
-        createdAt: user.createdAt,
-      },
+    sendResponse(res, 200, "Profile fetched", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      location: user.location || {},
+      profilePhoto: user.profilePhoto,
+      createdAt: user.createdAt,
     });
-  } catch (error) {
-    next(error);
+
+  } catch (err) {
+    next(err);
   }
 };
-
-
 const updateProfile = async (req, res, next) => {
   try {
-    // 1. User ko dhoondein (req.user.userId authMiddleware se aayega)
     const user = await User.findById(req.user.id);
 
     if (!user) {
@@ -144,41 +137,36 @@ const updateProfile = async (req, res, next) => {
       throw new Error("User not found");
     }
 
-    // 2. Text Fields Update karein
-    // Agar body mein data hai to update karo, nahi to purana rehne do
-    user.name = req.body.name || user.name;
-    
-    // Nested Location fields update
+    // Ensure location exists
+    if (!user.location) user.location = {};
+
+    // Update fields
+    if (req.body.name) user.name = req.body.name;
+
     if (req.body.state) user.location.state = req.body.state;
     if (req.body.city) user.location.city = req.body.city;
     if (req.body.ward) user.location.ward = req.body.ward;
 
-    // 3. Photo Update karein (Agar file upload hui hai)
+    // Image upload
     if (req.file) {
-      // Database mein hum sirf file ka path save karte hain
       user.profilePhoto = `/uploads/profiles/${req.file.filename}`;
     }
 
-    // 4. Save karein
     const updatedUser = await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      data: {
-        id: updatedUser._id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        role: updatedUser.role,
-        location: updatedUser.location,
-        profilePhoto: updatedUser.profilePhoto, 
-      },
+    sendResponse(res, 200, "Profile updated", {
+      id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      location: updatedUser.location,
+      profilePhoto: updatedUser.profilePhoto,
     });
-  } catch (error) {
-    next(error);
+
+  } catch (err) {
+    next(err);
   }
 };
-
 module.exports = {
   registerUser,
   loginUser,
