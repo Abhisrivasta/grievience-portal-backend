@@ -19,6 +19,7 @@ const reportRoutes = require("./src/routes/reportRoutes");
 const auditRoutes = require("./src/routes/auditRoutes");
 const departmentRoutes = require("./src/routes/departmentRoutes");
 const officerRoutes = require("./src/routes/officerRoutes");
+const homeRoutes = require("./src/routes/pageRoutes")
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/officers", officerRoutes);
+app.use("/api/home", homeRoutes);
 
 
 

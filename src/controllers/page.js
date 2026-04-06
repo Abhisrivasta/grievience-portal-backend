@@ -1,31 +1,39 @@
-const Page = require("../models/Page");
+const HomePage = require("../models/Page");
 
-const createPage = async (req, res, next) => {
+// controllers/home.controller.js
+// ✅ Create or Update Home Page (Singleton)
+const upsertHomePage = async (req, res, next) => {
   try {
-    const { title, description, contents, slug } = req.body;
+    const { title, description, contents } = req.body;
 
-    // Validation
-    if (!title || !slug) {
-      res.status(400);
-      throw new Error("Title and slug are required");
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: "Title is required",
+      });
     }
 
-    const existingPage = await Page.findOne({ slug });
-    if (existingPage) {
-      res.status(400);
-      throw new Error("Page already exists with this slug");
+    let home = await HomePage.findOne();
+
+    if (home) {
+      // 🔁 Update existing
+      home.title = title;
+      home.description = description;
+      home.contents = contents;
+
+      await home.save();
+    } else {
+      // 🆕 Create new
+      home = await HomePage.create({
+        title,
+        description,
+        contents,
+      });
     }
 
-    const page = await Page.create({
-      title,
-      description,
-      contents,
-      slug,
-    });
-
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      data: page,
+      data: home,
     });
 
   } catch (error) {
@@ -33,61 +41,29 @@ const createPage = async (req, res, next) => {
   }
 };
 
-
-
-
+// ✅ Get Home Page
 const getHomePage = async (req, res, next) => {
   try {
-    const page = await Page.findOne({ slug: "home" });
+    const home = await HomePage.findOne();
 
-    if (!page) {
-      res.status(404);
-      throw new Error("Home page not found");
+    if (!home) {
+      return res.status(404).json({
+        success: false,
+        message: "Home page not found",
+      });
     }
 
     res.status(200).json({
       success: true,
-      data: page,
+      data: home,
     });
 
   } catch (error) {
     next(error);
   }
 };
-
-
-
-const updatePage = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const updatedPage = await Page.findByIdAndUpdate(
-      id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
-
-    if (!updatedPage) {
-      res.status(404);
-      throw new Error("Page not found");
-    }
-
-    res.status(200).json({
-      success: true,
-      data: updatedPage,
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
-
 
 module.exports = {
-  createPage,
+  upsertHomePage,
   getHomePage,
-  updatePage,
 };

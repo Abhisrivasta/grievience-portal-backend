@@ -1,21 +1,20 @@
+// routes/home.routes.js
+
 const express = require("express");
 const router = express.Router();
+
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
 
 const {
-  createPage,
+  upsertHomePage,
   getHomePage,
-  updatePage,
-} = require("../controllers/page.controller");
+} = require("../controllers/page");
 
+// 🌐 Public route
+router.get("/", getHomePage);
 
-
-router.get("/home", getHomePage);
-
-router.post("/", authMiddleware, roleMiddleware("admin"), createPage);
-
-router.put("/:id", authMiddleware, roleMiddleware("admin"), updatePage);
-
+// 🔐 Admin only (Create or Update)
+router.post("/", authMiddleware, roleMiddleware("admin"), upsertHomePage);
 
 module.exports = router;
