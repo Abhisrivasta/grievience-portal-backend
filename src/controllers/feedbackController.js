@@ -79,18 +79,62 @@ const submitFeedback = async (req, res, next) => {
 
 const getAllFeedbacks = async (req, res, next) => {
   try {
-    const feedbacks = await Feedback.find()
-      .populate("complaint", "title")
-      .populate("citizen", "name email");
+    let {
+      page = 1,
+      limit = 10,
+      sort = "-createdAt",
+      rating,
+      search,
+    } = req.query;
+
+    // Convert to numbers
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const skip = (page - 1) * limit;
+
+    // 🔹 Filter object
+    let filter = {};
+
+    // Rating filter
+    if (rating) {
+      filter.rating = Number(rating);
+    }
+
+    // Search filter (comment)
+    if (search) {
+      filter.comment = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
+    // 🔹 Base query
+    let query = Feedback.find(filter)
+      .populate("complaint", "title category")
+      .populate("citizen", "name email")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit);
+
+    const feedbacks = await query;
+
+    // 🔹 Total count (important for pagination)
+    const total = await Feedback.countDocuments(filter);
 
     res.status(200).json({
       success: true,
+      page,
+      totalPages: Math.ceil(total / limit),
+      totalResults: total,
+      count: feedbacks.length,
       data: feedbacks,
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 module.exports = {
   submitFeedback,

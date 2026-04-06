@@ -12,10 +12,12 @@ const {
   updateComplaintStatus,
   assignComplaintToOfficer,
   getAllComplaints,
-  getComplaintForOfficer
+  getComplaintForOfficer,
 } = require("../controllers/complaintController");
 
-//create complaint
+// 🟢 COMMON (All authenticated)
+
+// Create complaint (Citizen)
 router.post(
   "/",
   authMiddleware,
@@ -23,14 +25,27 @@ router.post(
   createComplaint
 );
 
-// get my complaint
-router.get("/my",
+// 👤 CITIZEN ROUTES
+
+// Get my complaints
+router.get(
+  "/my",
   authMiddleware,
   roleMiddleware("citizen"),
-  getMyComplaints   
-)
+  getMyComplaints
+);
 
-//Get complaint to assinged officer
+// Get single complaint (citizen)
+router.get(
+  "/citizen/:id",
+  authMiddleware,
+  roleMiddleware("citizen"),
+  getComplaintById
+);
+
+// 👨‍💼 OFFICER ROUTES
+
+// Get assigned complaints
 router.get(
   "/assigned",
   authMiddleware,
@@ -38,22 +53,7 @@ router.get(
   getAssignedComplaints
 );
 
-// assign complaint by admin
-router.put(
-  "/:id/assign",
-  authMiddleware,
-  roleMiddleware("admin"),
-  assignComplaintToOfficer
-);
-
-router.get(
-  "/",
-  authMiddleware,
-  roleMiddleware("admin"),
-  getAllComplaints
-);
-
-// Officer complaint detail
+// Get single complaint (officer view)
 router.get(
   "/officer/:id",
   authMiddleware,
@@ -61,8 +61,7 @@ router.get(
   getComplaintForOfficer
 );
 
-
-//update complaint status
+// Update complaint status
 router.put(
   "/:id/status",
   authMiddleware,
@@ -70,13 +69,22 @@ router.put(
   updateComplaintStatus
 );
 
-// Get complaint details of citizen
-router.get(
-  "/:id",
-  authMiddleware,
-  roleMiddleware("citizen"),
-  getComplaintById
-)
+// 👑 ADMIN ROUTES
 
+// Get all complaints (with filters, search, etc.)
+router.get(
+  "/",
+  authMiddleware,
+  roleMiddleware("admin"),
+  getAllComplaints
+);
+
+// Assign complaint to officer
+router.put(
+  "/:id/assign",
+  authMiddleware,
+  roleMiddleware("admin"),
+  assignComplaintToOfficer
+);
 
 module.exports = router;

@@ -57,26 +57,50 @@ const createComplaint = async (req, res, next) => {
 };
 
 //getMyComplaints
-
-const getMyComplaints = async(req,res,next) => {
+const getMyComplaints = async (req, res, next) => {
   try {
-    const compalaints = await Complaint.find({
-      citizen:req.user.id,
-    })
-      .sort({createdAt: -1})
-      .select(
-        "title category status priority createdAt"
-      )
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+    const skip = (page - 1) * limit;
+
+    let filter = {
+      citizen: req.user.id,
+    };
+
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
+
+    let sort = { createdAt: -1 };
+
+    if (req.query.sortBy) {
+      const order = req.query.order === "asc" ? 1 : -1;
+      sort = { [req.query.sortBy]: order };
+    }
+
+    const total = await Complaint.countDocuments(filter);
+
+    const complaints = await Complaint.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .select("title category status priority createdAt");
 
     res.status(200).json({
-      success:true,
-      count:compalaints.length,
-      data:compalaints
-    })
+      success: true,
+      count: complaints.length,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      data: complaints,
+    });
+
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
 
 //getComplaintsbyId
@@ -118,23 +142,66 @@ const getComplaintById = async (req, res, next) => {
 
 const getAssignedComplaints = async (req, res, next) => {
   try {
-    const complaints = await Complaint.find({
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+    const skip = (page - 1) * limit;
+
+ 
+    let filter = {
       assignedOfficer: req.user.id,
-    })
-      .sort({ createdAt: -1 })
+    };
+
+
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
+    if (req.query.priority) {
+      filter.priority = req.query.priority;
+    }
+
+   
+    if (req.query.search) {
+      const search = req.query.search;
+
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+
+    let sort = { createdAt: -1 };
+
+    if (req.query.sortBy) {
+      const order = req.query.order === "asc" ? 1 : -1;
+      sort = { [req.query.sortBy]: order };
+    }
+
+   
+    const total = await Complaint.countDocuments(filter);
+
+    const complaints = await Complaint.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
       .populate("citizen", "name email")
       .populate("department", "name category");
 
     res.status(200).json({
       success: true,
       count: complaints.length,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
       data: complaints,
     });
+
   } catch (error) {
     next(error);
   }
 };
-
 
 //  Update complaint status (Officer)
 const updateComplaintStatus = async (req, res, next) => {
@@ -216,19 +283,53 @@ const getAllComplaints = async (req, res, next) => {
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 5;
-
     const skip = (page - 1) * limit;
 
-    const totalComplaints = await Complaint.countDocuments();
+  
+    let filter = {};
 
-    const complaints = await Complaint.find()
-      .sort({ createdAt: -1 })
+    if (req.query.status) {
+      filter.status = req.query.status; // e.g. pending, resolved
+    }
+
+    if (req.query.department) {
+      filter.department = req.query.department; // department ID
+    }
+
+    if (req.query.assignedOfficer) {
+      filter.assignedOfficer = req.query.assignedOfficer;
+    }
+
+
+    if (req.query.search) {
+      const search = req.query.search;
+
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    let sort = {};
+
+    if (req.query.sortBy) {
+      const order = req.query.order === "asc" ? 1 : -1;
+      sort[req.query.sortBy] = order;
+    } else {
+      sort.createdAt = -1; // default latest
+    }
+
+    const totalComplaints = await Complaint.countDocuments(filter);
+
+    const complaints = await Complaint.find(filter)
+      .sort(sort)
       .skip(skip)
       .limit(limit)
       .populate("citizen", "name email")
       .populate("assignedOfficer", "name email")
       .populate("department", "name");
 
+   
     res.status(200).json({
       success: true,
       count: complaints.length,
@@ -242,6 +343,8 @@ const getAllComplaints = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 // assign complaint to officer
 const assignComplaintToOfficer = async (req, res, next) => {
