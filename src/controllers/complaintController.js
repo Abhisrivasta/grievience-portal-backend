@@ -10,34 +10,34 @@ const {
 // create compalaints
 const createComplaint = async (req, res, next) => {
   try {
-    const {
-      title,
-      description,
-      category,
-      location,
-      image,
-    } = req.body;
+    // FormData se data nikalna (Note: latitude/longitude req.body mein aayenge)
+    const { title, description, category, area, latitude, longitude } = req.body;
 
     // Basic validation
-    if (!title || !description || !category || !location?.area) {
+    if (!title || !description || !category || !area) {
       res.status(400);
-      throw new Error(
-        "Title, description, category and location area are required"
-      );
+      throw new Error("Title, description, category and area are required");
     }
+
+    // Image path handle karna
+    let imagePath = req.file ? req.file.path.replace(/\\/g, "/") : null;
 
     // Create complaint
     const complaint = await Complaint.create({
       title,
       description,
       category,
-      location,
-      image,
+      location: {
+        area,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
+      },
+      image: imagePath,
       citizen: req.user.id,
       timeline: [
         {
           status: "Pending",
-          remark: "Complaint registered by citizen",
+          remark: "Complaint registered by citizen with evidence",
           updatedBy: "System",
         },
       ],
@@ -49,6 +49,7 @@ const createComplaint = async (req, res, next) => {
       data: {
         id: complaint._id,
         status: complaint.status,
+        image: complaint.image
       },
     });
   } catch (error) {
@@ -56,44 +57,70 @@ const createComplaint = async (req, res, next) => {
   }
 };
 
-//getMyComplaints
+// getMyComplaints 
 const getMyComplaints = async (req, res, next) => {
   try {
+    // 1. Destructure and set defaults
+    const { 
+      page = 1, 
+      limit = 5, 
+      search, 
+      status, 
+      priority, 
+      category, 
+      startDate, 
+      endDate, 
+      sortBy = "createdAt", 
+      order = "desc" 
+    } = req.query;
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 5;
-    const skip = (page - 1) * limit;
+    // 2. Prepare Pagination
+    const pageNumber = Math.max(parseInt(page), 1);
+    const limitNumber = Math.max(parseInt(limit), 1);
+    const skip = (pageNumber - 1) * limitNumber;
 
-    let filter = {
-      citizen: req.user.id,
-    };
+    // 3. Build Dynamic Filter Object
+    const filter = { citizen: req.user.id };
 
-    if (req.query.status) {
-      filter.status = req.query.status;
+    if (status) filter.status = status;
+    if (priority) filter.priority = priority;
+    if (category) filter.category = category;
+
+    // Advanced Search (Title or Category)
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } },
+      ];
     }
 
-
-    let sort = { createdAt: -1 };
-
-    if (req.query.sortBy) {
-      const order = req.query.order === "asc" ? 1 : -1;
-      sort = { [req.query.sortBy]: order };
+    // Date Range Logic
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
-    const total = await Complaint.countDocuments(filter);
+    // 4. Execute Query and Count in Parallel (Better Performance)
+    const [complaints, total] = await Promise.all([
+      Complaint.find(filter)
+        .sort({ [sortBy]: order === "asc" ? 1 : -1 })
+        .skip(skip)
+        .limit(limitNumber)
+        .select("title category status priority createdAt"),
+      Complaint.countDocuments(filter),
+    ]);
 
-    const complaints = await Complaint.find(filter)
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .select("title category status priority createdAt");
-
+    // 5. Structured Response
     res.status(200).json({
       success: true,
-      count: complaints.length,
-      total,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
+      pagination: {
+        total,
+        count: complaints.length,
+        currentPage: pageNumber,
+        totalPages: Math.ceil(total / limitNumber),
+        hasNextPage: pageNumber < Math.ceil(total / limitNumber),
+      },
       data: complaints,
     });
 
@@ -101,8 +128,6 @@ const getMyComplaints = async (req, res, next) => {
     next(error);
   }
 };
-
-
 //getComplaintsbyId
 const getComplaintById = async (req, res, next) => {
   try {

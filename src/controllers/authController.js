@@ -128,6 +128,7 @@ const getUserProfile = async (req, res, next) => {
     next(err);
   }
 };
+
 const updateProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
