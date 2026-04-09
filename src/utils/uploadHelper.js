@@ -2,31 +2,37 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Ensure directory exists logic
 const createDir = (dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 };
 
-// Storage Configuration
+// ✅ Dynamic destination — complaint ya profile dono handle karega
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = "uploads/complaints";
-    createDir(uploadPath); // Folder nahi hai toh bana dega
+    // Route ke hisaab se folder decide hoga
+    let uploadPath = "uploads/complaints"; // default
+
+    if (req.baseUrl.includes("auth") || req.path.includes("profile")) {
+      uploadPath = "uploads/profiles";
+    }
+
+    createDir(uploadPath);
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Filename format: complaint-123456789-image.jpg
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, `complaint-${uniqueSuffix}${path.extname(file.originalname)}`);
+    const prefix = req.baseUrl.includes("auth") ? "profile" : "complaint";
+    cb(null, `${prefix}-${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
 
-// File Filter (Sirf Images allowed)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const extname = allowedTypes.test(
+    path.extname(file.originalname).toLowerCase()
+  );
   const mimetype = allowedTypes.test(file.mimetype);
 
   if (extname && mimetype) {
@@ -37,9 +43,9 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 module.exports = upload;

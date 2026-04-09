@@ -7,7 +7,7 @@ const morgan = require("morgan");
 
 // Database Configuration
 const connectDB = require("./src/config/db");
-require("./src/models"); // Models registration
+require("./src/models");
 
 // Middleware Imports
 const errorHandler = require("./src/middlewares/errorHandler");
@@ -26,18 +26,24 @@ const homeRoutes = require("./src/routes/pageRoutes");
 
 const app = express();
 
+// --- 📁 UPLOAD FOLDERS SETUP ---
+const uploadFolders = [
+  path.join(__dirname, "uploads/complaints"),
+  path.join(__dirname, "uploads/profiles"), // ✅ Profile folder added
+];
 
-const uploadDir = path.join(__dirname, "uploads/complaints");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("📁 Created uploads/complaints directory");
-}
+uploadFolders.forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`📁 Created: ${dir}`);
+  }
+});
 
 // --- 🌐 CORS CONFIGURATION ---
 const allowedOrigins = [
   "http://localhost:5173",
   "https://grievience-portal-vqu8.vercel.app",
-  "https://grievience-portal.vercel.app"
+  "https://grievience-portal.vercel.app",
 ];
 
 app.use(
@@ -53,11 +59,12 @@ app.use(
   })
 );
 
-app.use(express.json()); // JSON body parser
-app.use(express.urlencoded({ extended: true })); // FormData/URL-encoded parser
-app.use(morgan("dev")); // Logging for development
-app.use(logger); 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan("dev"));
+app.use(logger);
 
+// ✅ Static files — dono folders serve honge
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // --- 🛣️ API ROUTES ---
@@ -79,7 +86,6 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", timestamp: new Date() });
 });
 
-
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
@@ -89,7 +95,7 @@ connectDB()
     console.log("✅ MongoDB Connected Successfully");
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📂 Static files served at: ${path.join(__dirname, "uploads")}`);
+      console.log(`📂 Static files: ${path.join(__dirname, "uploads")}`);
     });
   })
   .catch((err) => {
