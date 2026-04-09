@@ -10,11 +10,7 @@ const {
   updateDepartment,
 } = require("../controllers/departmentController");
 
-/**
- * @route   POST /api/departments
- * @desc    Create department
- * @access  Private (Admin)
- */
+
 router.post(
   "/",
   authMiddleware,
@@ -22,11 +18,7 @@ router.post(
   createDepartment
 );
 
-/**
- * @route   GET /api/departments
- * @desc    Get departments
- * @access  Private (Admin, Officer)
- */
+
 router.get(
   "/",
   authMiddleware,
@@ -34,11 +26,7 @@ router.get(
   getDepartments
 );
 
-/**
- * @route   PUT /api/departments/:id
- * @desc    Update / disable department
- * @access  Private (Admin)
- */
+
 router.put(
   "/:id",
   authMiddleware,

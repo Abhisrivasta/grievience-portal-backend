@@ -24,6 +24,7 @@ const departmentRoutes = require("./src/routes/departmentRoutes");
 const officerRoutes = require("./src/routes/officerRoutes");
 const homeRoutes = require("./src/routes/pageRoutes");
 const inquiryRoutes = require("./src/routes/inquiryRoutes");
+const aboutRoutes = require("./src/routes/aboutRoutes");
 
 const app = express();
 
@@ -78,6 +79,7 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/officers", officerRoutes);
 app.use("/api/home", homeRoutes);
+app.use("/api/about", aboutRoutes); 
 app.use("/api/inquiries", inquiryRoutes);
 
 app.get("/", (req, res) => {
