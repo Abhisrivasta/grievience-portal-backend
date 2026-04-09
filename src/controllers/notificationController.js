@@ -1,10 +1,7 @@
+const User = require("../models/User"); // make sure this is imported
 const Notification = require("../models/Notification");
 
-/**
- * @desc    Get logged-in user's notifications
- * @route   GET /api/notifications
- * @access  Private
- */
+
 const getMyNotifications = async (req, res, next) => {
   try {
     const notifications = await Notification.find({
@@ -23,11 +20,6 @@ const getMyNotifications = async (req, res, next) => {
   }
 };
 
-/**
- * @desc    Mark notification as read
- * @route   PUT /api/notifications/:id/read
- * @access  Private
- */
 const markNotificationAsRead = async (req, res, next) => {
   try {
     const notification = await Notification.findById(
@@ -154,9 +146,76 @@ const sendBulkNotification = async (req, res, next) => {
 
 
 
+const sendSingleNotification = async (req, res, next) => {
+  try {
+    const { userId, message, type = "info", complaintId } = req.body;
+
+    // Validation
+    if (!userId || !message) {
+      res.status(400);
+      throw new Error("userId and message are required");
+    }
+
+    // Check user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    // Create notification
+    const notification = await Notification.create({
+      user: userId,
+      message,
+      type,
+      relatedComplaint: complaintId || null,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Notification sent successfully",
+      data: notification,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+const deleteNotification = async (req, res, next) => {
+  try {
+    const notification = await Notification.findById(req.params.id);
+
+    if (!notification) {
+      res.status(404);
+      throw new Error("Notification not found");
+    }
+
+    // 🔒 Ownership check (VERY IMPORTANT)
+    if (notification.user.toString() !== req.user.id) {
+      res.status(403);
+      throw new Error("Not authorized to delete this notification");
+    }
+
+    await notification.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "Notification deleted successfully",
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 module.exports = {
   getMyNotifications,
   markNotificationAsRead,
   getUnreadNotificationCount,
-  sendBulkNotification
+  sendBulkNotification,
+  sendSingleNotification,
+  deleteNotification
 };

@@ -20,6 +20,8 @@ const notificationSchema = new mongoose.Schema(
       default: "info",
     },
 
+    
+
     isRead: {
       type: Boolean,
       default: false,

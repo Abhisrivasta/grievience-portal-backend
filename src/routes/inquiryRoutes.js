@@ -12,7 +12,7 @@ const {
 } = require("../controllers/inquiryController");
 
 // PUBLIC
-router.post("/", createInquiry);
+router.post("/",authMiddleware,createInquiry);
 
 // ADMIN
 router.get("/", authMiddleware, roleMiddleware("admin"), getAllInquiries);

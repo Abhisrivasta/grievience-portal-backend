@@ -1,27 +1,27 @@
 const Inquiry = require('../models/Inquiry');
+const { createNotification } = require("../services/notificationService");
 
-// CREATE
 exports.createInquiry = async (req, res) => {
+  console.log("Creating notification...");
   try {
     const { name, email, subject, message } = req.body;
 
-    if (!name || !email || !subject || !message) {
-      return res.status(400).json({ success: false, message: "All fields required" });
-    }
-
-    const inquiry = await Inquiry.create({ name, email, subject, message });
+    const inquiry = await Inquiry.create({
+      name,
+      email,
+      subject,
+      message,
+      user: req.user.id, 
+    });
 
     res.status(201).json({
       success: true,
-      message: "Message sent successfully!",
-      data: inquiry
+      data: inquiry,
     });
-
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
-
 // GET ALL (ADMIN)
 exports.getAllInquiries = async (req, res) => {
   try {
@@ -38,27 +38,41 @@ exports.getAllInquiries = async (req, res) => {
   }
 };
 
-// UPDATE STATUS
+
 exports.updateInquiryStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, replyMessage } = req.body;
 
-    const inquiry = await Inquiry.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
+    const inquiry = await Inquiry.findById(req.params.id);
 
-    res.status(200).json({
+    if (!inquiry) {
+      return res.status(404).json({ message: "Inquiry not found" });
+    }
+
+    // Update
+    if (status) inquiry.status = status;
+    if (replyMessage) inquiry.replyMessage = replyMessage;
+
+    await inquiry.save();
+
+    // 🔥 SEND NOTIFICATION (NOW ALWAYS WORKS)
+    if (status === "Replied" && replyMessage) {
+      await createNotification({
+        userId: inquiry.user,
+        message: `Your inquiry "${inquiry.subject}" has been answered`,
+        type: "info",
+      });
+    }
+
+    res.json({
       success: true,
-      data: inquiry
+      message: "Inquiry updated + notification sent",
     });
 
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
-
 // DELETE
 exports.deleteInquiry = async (req, res) => {
   try {

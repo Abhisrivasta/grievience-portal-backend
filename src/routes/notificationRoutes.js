@@ -8,11 +8,12 @@ const {
   getMyNotifications,
   markNotificationAsRead,
   getUnreadNotificationCount,
+  sendBulkNotification,
+  sendSingleNotification,
+  deleteNotification
 } = require("../controllers/notificationController");
 
-const {
-  sendBulkNotification,
-} = require("../controllers/bulkNotificationController");
+
 
 // Get unread notification count
 router.get(
@@ -37,6 +38,20 @@ router.post(
   authMiddleware,
   roleMiddleware("admin"),
   sendBulkNotification
+);
+
+// Send single notification (Admin or System)
+router.post(
+  "/single",
+  authMiddleware,
+  roleMiddleware("admin"), 
+  sendSingleNotification
+);
+
+router.delete(
+  "/:id",
+  authMiddleware,
+  deleteNotification
 );
 
 module.exports = router;

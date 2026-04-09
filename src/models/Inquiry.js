@@ -10,6 +10,15 @@ const inquirySchema = new mongoose.Schema({
     enum: ['Pending', 'Replied', 'Closed'], 
     default: 'Pending' 
   },
+user: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  required: false
+},
+replyMessage: {
+  type: String,
+  default: ""
+},
   createdAt: { type: Date, default: Date.now }
 });
 
