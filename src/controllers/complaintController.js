@@ -478,7 +478,72 @@ const getComplaintForOfficer = async (req, res, next) => {
 };
 
 
+const updateComplaint = async (req, res, next) => {
+  try {
+    const { title, description, category, area, latitude, longitude } = req.body;
+    const complaintId = req.params.id;
 
+    // 1. Complaint dhoondo aur check karo exist karti hai ya nahi
+    const complaint = await Complaint.findById(complaintId);
+
+    if (!complaint) {
+      res.status(404);
+      throw new Error("Complaint not found");
+    }
+
+    // 2. Authorization Check (Sirf wahi citizen update kare jiski ye complaint hai)
+    if (complaint.citizen.toString() !== req.user.id) {
+      res.status(403);
+      throw new Error("You are not authorized to update this complaint");
+    }
+
+    // 3. Status Lock logic (Sirf 'Pending' par hi update allow hoga)
+    if (complaint.status !== "Pending") {
+      res.status(400);
+      throw new Error(`Update not allowed! Complaint is already ${complaint.status}`);
+    }
+
+    // 4. Image Update Logic
+    // Agar nayi file aayi hai toh uska path lo, nahi toh purani image hi rehne do
+    let imagePath = complaint.image; 
+    if (req.file) {
+      imagePath = req.file.path.replace(/\\/g, "/");
+    }
+
+    // 5. Atomic Update (Fields update karo)
+    complaint.title = title || complaint.title;
+    complaint.description = description || complaint.description;
+    complaint.category = category || complaint.category;
+    complaint.image = imagePath;
+
+    // Location object update (Nested structure maintain karte hue)
+    complaint.location = {
+      area: area || complaint.location.area,
+      latitude: latitude ? Number(latitude) : complaint.location.latitude,
+      longitude: longitude ? Number(longitude) : complaint.location.longitude,
+    };
+
+    // 6. Timeline Entry (History maintain karne ke liye)
+    complaint.timeline.push({
+      status: "Pending",
+      remark: "Complaint details updated by citizen",
+      updatedBy: "Citizen",
+    });
+
+    // Save the changes
+    const updatedComplaint = await complaint.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Complaint updated successfully while in pending state",
+      data: updatedComplaint,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Exports check kar lena
 module.exports = {
   createComplaint,
   getMyComplaints,
@@ -487,6 +552,7 @@ module.exports = {
   updateComplaintStatus,
   assignComplaintToOfficer,
   getAllComplaints,
-  getComplaintForOfficer
+  getComplaintForOfficer,
+  updateComplaint 
 };
 

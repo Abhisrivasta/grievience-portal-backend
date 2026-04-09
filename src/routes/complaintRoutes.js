@@ -2,38 +2,33 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
-const upload = require("../utils/uploadHelper"); // Aapka naya helper
+const upload = require("../utils/uploadHelper");
 
 const {
   createComplaint,
   getMyComplaints,
   getComplaintById,
   getAssignedComplaints,
-  updateComplaintStatus,
+  updateComplaintStatus, // Ye Officer ke liye hai
   assignComplaintToOfficer,
   getAllComplaints,
   getComplaintForOfficer,
+  updateComplaint // Ye Citizen ke liye naya banaya
 } = require("../controllers/complaintController");
 
-// 🟢 CITIZEN: Create complaint with Image Upload
-router.post(
-  "/",
-  authMiddleware,
-  roleMiddleware("citizen"),
-  upload.single("image"), // Multer middleware
-  createComplaint
-);
-
-// 👤 CITIZEN ROUTES
+// --- CITIZEN ROUTES ---
+router.post("/", authMiddleware, roleMiddleware("citizen"), upload.single("image"), createComplaint);
 router.get("/my", authMiddleware, roleMiddleware("citizen"), getMyComplaints);
 router.get("/citizen/:id", authMiddleware, roleMiddleware("citizen"), getComplaintById);
 
-// 👨‍💼 OFFICER ROUTES
+router.put("/update/:id", authMiddleware, roleMiddleware("citizen"), upload.single("image"), updateComplaint);
+
+// --- OFFICER ROUTES ---
 router.get("/assigned", authMiddleware, roleMiddleware("officer"), getAssignedComplaints);
 router.get("/officer/:id", authMiddleware, roleMiddleware("officer"), getComplaintForOfficer);
 router.put("/:id/status", authMiddleware, roleMiddleware("officer"), updateComplaintStatus);
 
-// 👑 ADMIN ROUTES
+// --- ADMIN ROUTES ---
 router.get("/", authMiddleware, roleMiddleware("admin"), getAllComplaints);
 router.put("/:id/assign", authMiddleware, roleMiddleware("admin"), assignComplaintToOfficer);
 
