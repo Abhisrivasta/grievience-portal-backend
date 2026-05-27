@@ -1,18 +1,20 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
-const fs = require("fs"); // ✅ Old photo delete ke liye
+const fs = require("fs");
 const path = require("path");
+const admin = require("../config/firebase");
 
-// ✅ Fix: success flag status se decide hoga
+// ================= COMMON RESPONSE =================
 const sendResponse = (res, status, message, data = {}) => {
-  res.status(status).json({
+  return res.status(status).json({
     success: status >= 200 && status < 300,
     message,
     data,
   });
 };
 
+// ================= JWT TOKEN =================
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, role: user.role },
@@ -21,27 +23,85 @@ const generateToken = (user) => {
   );
 };
 
-// Register — same as before
+// ================= GOOGLE LOGIN =================
+const googleLogin = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return sendResponse(res, 400, "Firebase ID Token is required");
+    }
+
+
+    // Verify Firebase Token
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    if (!decoded || !decoded.email) {
+      return sendResponse(res, 401, "Invalid Firebase token");
+    }
+
+    const { email, name, picture } = decoded;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check user in DB
+    let user = await User.findOne({ email: cleanEmail });
+
+    // Create new user if not exists
+    if (!user) {
+      const randomPassword = await bcrypt.hash(
+        Math.random().toString(36).slice(-8),
+        10
+      );
+
+      user = await User.create({
+        name: name || "Google User",
+        email: cleanEmail,
+        password: randomPassword,
+        profilePhoto: picture || null,
+        location: {},
+      });
+
+    } else {
+      console.log("✅ Existing user login");
+    }
+
+    const token = generateToken(user);
+
+    return sendResponse(res, 200, "Google login successful", {
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+      },
+    });
+
+  } catch (err) {
+    console.error("❌ Google Login Error:", err.message);
+    return sendResponse(res, 401, "Google login failed");
+  }
+};
+
+// ================= REGISTER =================
 const registerUser = async (req, res, next) => {
   try {
     let { name, email, password, location } = req.body;
 
     if (!name || !email || !password) {
-      res.status(400);
-      throw new Error("Name, email and password are required");
+      return sendResponse(res, 400, "All fields are required");
     }
 
     email = email.toLowerCase().trim();
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      res.status(400);
-      throw new Error("User already exists");
+    const exists = await User.findOne({ email });
+    if (exists) {
+      return sendResponse(res, 400, "User already exists");
     }
 
     if (password.length < 6) {
-      res.status(400);
-      throw new Error("Password must be at least 6 characters");
+      return sendResponse(res, 400, "Password must be at least 6 characters");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -53,25 +113,25 @@ const registerUser = async (req, res, next) => {
       location: location || {},
     });
 
-    sendResponse(res, 201, "Registered successfully", {
+    return sendResponse(res, 201, "Registered successfully", {
       id: user._id,
-      name: user.name,
-      email: user.email,
+      name,
+      email,
       role: user.role,
     });
+
   } catch (err) {
     next(err);
   }
 };
 
-// Login — same as before
+// ================= LOGIN =================
 const loginUser = async (req, res, next) => {
   try {
     let { email, password } = req.body;
 
     if (!email || !password) {
-      res.status(400);
-      throw new Error("Email and password required");
+      return sendResponse(res, 400, "Email and password required");
     }
 
     email = email.toLowerCase().trim();
@@ -79,13 +139,12 @@ const loginUser = async (req, res, next) => {
     const user = await User.findOne({ email }).select("+password");
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      res.status(401);
-      throw new Error("Invalid credentials");
+      return sendResponse(res, 401, "Invalid credentials");
     }
 
     const token = generateToken(user);
 
-    sendResponse(res, 200, "Login successful", {
+    return sendResponse(res, 200, "Login successful", {
       token,
       user: {
         id: user._id,
@@ -94,22 +153,22 @@ const loginUser = async (req, res, next) => {
         role: user.role,
       },
     });
+
   } catch (err) {
     next(err);
   }
 };
 
-// Get Profile — same as before
+// ================= PROFILE =================
 const getUserProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
 
     if (!user) {
-      res.status(404);
-      throw new Error("User not found");
+      return sendResponse(res, 404, "User not found");
     }
 
-    sendResponse(res, 200, "Profile fetched", {
+    return sendResponse(res, 200, "Profile fetched", {
       id: user._id,
       name: user.name,
       email: user.email,
@@ -118,68 +177,52 @@ const getUserProfile = async (req, res, next) => {
       profilePhoto: user.profilePhoto || null,
       createdAt: user.createdAt,
     });
+
   } catch (err) {
     next(err);
   }
 };
 
-// ✅ updateProfile — Fully rewritten
+// ================= UPDATE PROFILE =================
 const updateProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
 
     if (!user) {
-      // ✅ Agar file upload ho gayi thi toh use bhi delete karo
-      if (req.file) {
-        fs.unlink(req.file.path, () => {});
-      }
-      res.status(404);
-      throw new Error("User not found");
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return sendResponse(res, 404, "User not found");
     }
 
-    // ✅ Location object ensure karo
-    if (!user.location) user.location = {};
-
-    // ✅ Fields update karo (sirf woh jo bheje gaye hain)
     const { name, state, city, ward } = req.body;
 
-    if (name && name.trim()) user.name = name.trim();
-    if (state && state.trim()) user.location.state = state.trim();
-    if (city && city.trim()) user.location.city = city.trim();
-    if (ward && ward.trim()) user.location.ward = ward.trim();
+    if (name) user.name = name.trim();
+    if (state) user.location.state = state.trim();
+    if (city) user.location.city = city.trim();
+    if (ward) user.location.ward = ward.trim();
 
-    // ✅ Profile photo update — purani photo delete karo pehle
     if (req.file) {
-      // Purani photo delete karo agar default nahi hai
-      if (user.profilePhoto) {
-        const oldPhotoPath = path.join(__dirname, "../../", user.profilePhoto);
-        fs.unlink(oldPhotoPath, (err) => {
-          if (err) console.warn("⚠️ Old photo delete nahi hui:", err.message);
-        });
+      if (user.profilePhoto && !user.profilePhoto.startsWith("http")) {
+        const oldPath = path.join(__dirname, "../", user.profilePhoto);
+        fs.unlink(oldPath, () => {});
       }
 
-      // Naya path save karo
-      user.profilePhoto = `/uploads/profiles/${req.file.filename}`;
+      user.profilePhoto = `uploads/profiles/${req.file.filename}`;
     }
 
-    // ✅ location markModified — nested object ke liye zaroori hai Mongoose mein
     user.markModified("location");
+    const updated = await user.save();
 
-    const updatedUser = await user.save();
-
-    sendResponse(res, 200, "Profile updated successfully", {
-      id: updatedUser._id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-      role: updatedUser.role,
-      location: updatedUser.location,
-      profilePhoto: updatedUser.profilePhoto || null,
+    return sendResponse(res, 200, "Profile updated", {
+      id: updated._id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role,
+      location: updated.location,
+      profilePhoto: updated.profilePhoto || null,
     });
+
   } catch (err) {
-    // ✅ Koi bhi error aaye toh uploaded file cleanup karo
-    if (req.file) {
-      fs.unlink(req.file.path, () => {});
-    }
+    if (req.file) fs.unlink(req.file.path, () => {});
     next(err);
   }
 };
@@ -189,4 +232,5 @@ module.exports = {
   loginUser,
   getUserProfile,
   updateProfile,
+  googleLogin,
 };

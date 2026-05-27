@@ -4,11 +4,13 @@ const authMiddleware = require("../middlewares/authMiddleware")
 const upload = require("../middlewares/uploadMiddleware")
 
 
+
 const {
   registerUser,
   loginUser,
   getUserProfile,
-  updateProfile
+  updateProfile,
+  googleLogin
 
 } = require("../controllers/authController");
 
@@ -29,6 +31,9 @@ router.put(
   upload.single("profilePhoto"), 
   updateProfile             
 );
+
+router.post("/google", googleLogin);
+
 
 
 module.exports = router;

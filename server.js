@@ -4,6 +4,8 @@ const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
 const morgan = require("morgan");
+const dns = require("dns");
+dns.setServers(["1.1.1.1","8.8.8.8"])
 
 // Database Configuration
 const connectDB = require("./src/config/db");
@@ -28,7 +30,6 @@ const aboutRoutes = require("./src/routes/aboutRoutes");
 
 const app = express();
 
-// --- 📁 UPLOAD FOLDERS SETUP ---
 const uploadFolders = [
   path.join(__dirname, "uploads/complaints"),
   path.join(__dirname, "uploads/profiles"), // ✅ Profile folder added
@@ -41,7 +42,7 @@ uploadFolders.forEach((dir) => {
   }
 });
 
-// --- 🌐 CORS CONFIGURATION ---
+// --- 🌐 CORS CONFIGURATION --
 const allowedOrigins = [
   "http://localhost:5173",
   "https://grievience-portal-vqu8.vercel.app",

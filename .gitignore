@@ -101,6 +101,8 @@ dist
 # FuseBox cache
 .fusebox/
 
+firebase-admin.json
+
 # DynamoDB Local files
 .dynamodb/
 
