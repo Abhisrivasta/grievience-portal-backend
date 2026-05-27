@@ -1,20 +1,8 @@
-const fs = require('fs');
-const path = require('path');
-
-const logFile = path.join(__dirname, '../../logs.txt'); 
-
 const logger = (req, res, next) => {
   const time = new Date().toLocaleString();
-  const logMessage = `[${time}] ${req.method} ${req.originalUrl}\n`;
+  const logMessage = `[${time}] ${req.method} ${req.originalUrl}`;
 
-  // Append log to file
-  fs.appendFile(logFile, logMessage, (err) => {
-    if (err) {
-      console.error('Error writing to log file:', err);
-    }
-  });
-
-  console.log(logMessage.trim());
+  console.log(logMessage); 
 
   next();
 };
