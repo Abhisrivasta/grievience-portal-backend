@@ -1,21 +1,19 @@
 require("dotenv").config();
 const express = require("express");
-const path = require("path");
-const fs = require("fs");
 const cors = require("cors");
 const morgan = require("morgan");
 const dns = require("dns");
-dns.setServers(["1.1.1.1","8.8.8.8"])
 
-// Database Configuration
+dns.setServers(["1.1.1.1", "8.8.8.8"]);
+
 const connectDB = require("./src/config/db");
 require("./src/models");
 
-// Middleware Imports
+// Middleware
 const errorHandler = require("./src/middlewares/errorHandler");
 const logger = require("./src/middlewares/logger");
 
-// Route Imports
+// Routes
 const authRoutes = require("./src/routes/authRoutes");
 const complaintRoutes = require("./src/routes/complaintRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
@@ -30,19 +28,6 @@ const aboutRoutes = require("./src/routes/aboutRoutes");
 
 const app = express();
 
-const uploadFolders = [
-  path.join(__dirname, "uploads/complaints"),
-  path.join(__dirname, "uploads/profiles"), // ✅ Profile folder added
-];
-
-uploadFolders.forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log(`📁 Created: ${dir}`);
-  }
-});
-
-// --- 🌐 CORS CONFIGURATION --
 const allowedOrigins = [
   "http://localhost:5173",
   "https://grievience-portal-vqu8.vercel.app",
@@ -67,10 +52,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(logger);
 
-// ✅ Static files — dono folders serve honge
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// --- 🛣️ API ROUTES ---
 app.use("/api/auth", authRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -80,7 +61,7 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/officers", officerRoutes);
 app.use("/api/home", homeRoutes);
-app.use("/api/about", aboutRoutes); 
+app.use("/api/about", aboutRoutes);
 app.use("/api/inquiries", inquiryRoutes);
 
 app.get("/", (req, res) => {
@@ -93,14 +74,13 @@ app.get("/health", (req, res) => {
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 connectDB()
   .then(() => {
     console.log("✅ MongoDB Connected Successfully");
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📂 Static files: ${path.join(__dirname, "uploads")}`);
     });
   })
   .catch((err) => {

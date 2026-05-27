@@ -2,6 +2,8 @@ const Complaint = require("../models/Complaint");
 const AuditLog = require("../models/AuditLog");
 const Department = require("../models/Department");
 const User = require("../models/User");
+const uploadToCloudinary = require("../utils/cloudinaryUpload.js");
+
 const {
   createNotification,
 } = require("../services/notificationService");
@@ -10,57 +12,59 @@ const {
 // create compalaints
 const createComplaint = async (req, res, next) => {
   try {
-    // FormData se data nikalna (Note: latitude/longitude req.body mein aayenge)
     const { title, description, category, area, latitude, longitude } = req.body;
 
-    // Basic validation
-    if (!title || !description || !category || !area) {
-      res.status(400);
-      throw new Error("Title, description, category and area are required");
+    if (!title?.trim() || !description?.trim() || !category?.trim() || !area?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Title, description, category and area are required",
+      });
     }
 
-    // Image path handle karna
-    let imagePath = req.file ? req.file.path.replace(/\\/g, "/") : null;
+    let imageUrl = null;
 
-    // Create complaint
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      imageUrl = result.secure_url;
+    }
+
     const complaint = await Complaint.create({
-      title,
-      description,
-      category,
+      title: title.trim(),
+      description: description.trim(),
+      category: category.trim(),
       location: {
-        area,
+        area: area.trim(),
         latitude: latitude ? Number(latitude) : null,
         longitude: longitude ? Number(longitude) : null,
       },
-      image: imagePath,
+      image: imageUrl,
       citizen: req.user.id,
       timeline: [
         {
           status: "Pending",
-          remark: "Complaint registered by citizen with evidence",
+          remark: "Complaint registered by citizen",
           updatedBy: "System",
         },
       ],
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Complaint created successfully",
       data: {
         id: complaint._id,
         status: complaint.status,
-        image: complaint.image
+        image: complaint.image,
       },
     });
+
   } catch (error) {
     next(error);
   }
 };
-
 // getMyComplaints 
 const getMyComplaints = async (req, res, next) => {
   try {
-    // 1. Destructure and set defaults
     const { 
       page = 1, 
       limit = 5, 
@@ -74,19 +78,16 @@ const getMyComplaints = async (req, res, next) => {
       order = "desc" 
     } = req.query;
 
-    // 2. Prepare Pagination
     const pageNumber = Math.max(parseInt(page), 1);
     const limitNumber = Math.max(parseInt(limit), 1);
     const skip = (pageNumber - 1) * limitNumber;
 
-    // 3. Build Dynamic Filter Object
     const filter = { citizen: req.user.id };
 
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
     if (category) filter.category = category;
 
-    // Advanced Search (Title or Category)
     if (search) {
       filter.$or = [
         { title: { $regex: search, $options: "i" } },
@@ -94,14 +95,12 @@ const getMyComplaints = async (req, res, next) => {
       ];
     }
 
-    // Date Range Logic
     if (startDate || endDate) {
       filter.createdAt = {};
       if (startDate) filter.createdAt.$gte = new Date(startDate);
       if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
-    // 4. Execute Query and Count in Parallel (Better Performance)
     const [complaints, total] = await Promise.all([
       Complaint.find(filter)
         .sort({ [sortBy]: order === "asc" ? 1 : -1 })
@@ -111,7 +110,6 @@ const getMyComplaints = async (req, res, next) => {
       Complaint.countDocuments(filter),
     ]);
 
-    // 5. Structured Response
     res.status(200).json({
       success: true,
       pagination: {
@@ -128,6 +126,8 @@ const getMyComplaints = async (req, res, next) => {
     next(error);
   }
 };
+
+
 //getComplaintsbyId
 const getComplaintById = async (req, res, next) => {
   try {
@@ -233,48 +233,51 @@ const updateComplaintStatus = async (req, res, next) => {
   try {
     const { status, remark, priority } = req.body;
 
-    if (!status) {
-      res.status(400);
-      throw new Error("Status is required");
+    if (!status?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
     }
 
-    const complaint = await Complaint.findById(
-      req.params.id
-    );
+    const complaint = await Complaint.findById(req.params.id);
 
     if (!complaint) {
-      res.status(404);
-      throw new Error("Complaint not found");
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
     }
 
-    // Ensure officer owns this complaint
-    if (
-      complaint.assignedOfficer?.toString() !==
-      req.user.id
-    ) {
-      res.status(403);
-      throw new Error(
-        "You are not authorized to update this complaint"
-      );
+    if (complaint.assignedOfficer?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
     }
 
-    // Update fields
+    const allowedStatuses = ["Pending", "In Progress", "Resolved", "Rejected"];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+      });
+    }
+
     complaint.status = status;
 
     if (priority) {
       complaint.priority = priority;
     }
 
-    // Add timeline entry
     complaint.timeline.push({
       status,
-      remark: remark || "Status updated by officer",
+      remark: remark?.trim() || "Updated by officer",
       updatedBy: "Officer",
     });
 
     await complaint.save();
 
-    // Create audit log
     await AuditLog.create({
       action: "UPDATE_COMPLAINT_STATUS",
       performedBy: req.user.id,
@@ -283,24 +286,22 @@ const updateComplaintStatus = async (req, res, next) => {
       ipAddress: req.ip,
     });
 
-    // Notify citizen
     await createNotification({
       userId: complaint.citizen,
-      message: `Your complaint status has been updated to "${status}"`,
+      message: `Your complaint status is now "${status}"`,
       type: "info",
       complaintId: complaint._id,
     });
 
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Complaint status updated successfully",
+      message: "Status updated successfully",
     });
+
   } catch (error) {
     next(error);
   }
 };
-
 
 // GET /complaints  (ADMIN)
 const getAllComplaints = async (req, res, next) => {
@@ -326,7 +327,6 @@ const getAllComplaints = async (req, res, next) => {
       filter.assignedOfficer = req.query.assignedOfficer;
     }
 
-    // ✅ Search ko $and ke saath lagao taaki baaki filters bhi kaam karein
     if (req.query.search) {
       const search = req.query.search.trim();
       filter.$or = [
@@ -477,73 +477,74 @@ const getComplaintForOfficer = async (req, res, next) => {
   }
 };
 
-
+//update complaint
 const updateComplaint = async (req, res, next) => {
   try {
     const { title, description, category, area, latitude, longitude } = req.body;
     const complaintId = req.params.id;
 
-    // 1. Complaint dhoondo aur check karo exist karti hai ya nahi
     const complaint = await Complaint.findById(complaintId);
 
     if (!complaint) {
-      res.status(404);
-      throw new Error("Complaint not found");
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
     }
 
-    // 2. Authorization Check (Sirf wahi citizen update kare jiski ye complaint hai)
     if (complaint.citizen.toString() !== req.user.id) {
-      res.status(403);
-      throw new Error("You are not authorized to update this complaint");
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
     }
 
-    // 3. Status Lock logic (Sirf 'Pending' par hi update allow hoga)
     if (complaint.status !== "Pending") {
-      res.status(400);
-      throw new Error(`Update not allowed! Complaint is already ${complaint.status}`);
+      return res.status(400).json({
+        success: false,
+        message: `Cannot update. Status is ${complaint.status}`,
+      });
     }
 
-    // 4. Image Update Logic
-    // Agar nayi file aayi hai toh uska path lo, nahi toh purani image hi rehne do
-    let imagePath = complaint.image; 
+    let imageUrl = complaint.image;
+
     if (req.file) {
-      imagePath = req.file.path.replace(/\\/g, "/");
+      const result = await uploadToCloudinary(req.file.buffer);
+      imageUrl = result.secure_url;
     }
 
-    // 5. Atomic Update (Fields update karo)
-    complaint.title = title || complaint.title;
-    complaint.description = description || complaint.description;
-    complaint.category = category || complaint.category;
-    complaint.image = imagePath;
+    if (title?.trim()) complaint.title = title.trim();
+    if (description?.trim()) complaint.description = description.trim();
+    if (category?.trim()) complaint.category = category.trim();
 
-    // Location object update (Nested structure maintain karte hue)
+    complaint.image = imageUrl;
+
     complaint.location = {
-      area: area || complaint.location.area,
+      area: area?.trim() || complaint.location.area,
       latitude: latitude ? Number(latitude) : complaint.location.latitude,
       longitude: longitude ? Number(longitude) : complaint.location.longitude,
     };
 
-    // 6. Timeline Entry (History maintain karne ke liye)
     complaint.timeline.push({
       status: "Pending",
-      remark: "Complaint details updated by citizen",
+      remark: "Complaint updated by citizen",
       updatedBy: "Citizen",
     });
 
-    // Save the changes
     const updatedComplaint = await complaint.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Complaint updated successfully while in pending state",
+      message: "Complaint updated successfully",
       data: updatedComplaint,
     });
+
   } catch (error) {
     next(error);
   }
 };
 
-// Exports check kar lena
+
 module.exports = {
   createComplaint,
   getMyComplaints,

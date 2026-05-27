@@ -2,18 +2,18 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
-const upload = require("../utils/uploadHelper");
+const upload = require("../middlewares/upload");
 
 const {
   createComplaint,
   getMyComplaints,
   getComplaintById,
   getAssignedComplaints,
-  updateComplaintStatus, // Ye Officer ke liye hai
+  updateComplaintStatus, 
   assignComplaintToOfficer,
   getAllComplaints,
   getComplaintForOfficer,
-  updateComplaint // Ye Citizen ke liye naya banaya
+  updateComplaint 
 } = require("../controllers/complaintController");
 
 // --- CITIZEN ROUTES ---

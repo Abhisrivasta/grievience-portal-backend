@@ -2,10 +2,12 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
+    // 🔹 Basic Info
     name: {
       type: String,
       required: true,
       trim: true,
+      minlength: 2,
     },
 
     email: {
@@ -14,12 +16,14 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      match: [/^\S+@\S+\.\S+$/, "Please use a valid email"],
     },
 
     password: {
       type: String,
       required: true,
-      select: false, 
+      select: false,
+      minlength: 6,
     },
 
     role: {
@@ -33,21 +37,47 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
-    // 📍 Location waisa hi hai jaisa pehle tha
-    location: {
-      state: { type: String },
-      city: { type: String },
-      ward: { type: String },
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
 
+    location: {
+      state: { type: String, trim: true },
+      city: { type: String, trim: true },
+      ward: { type: String, trim: true },
+    },
+
+    // 🔹 Profile
     profilePhoto: {
       type: String,
-      default: "" 
+      default: "",
+    },
+
+    emailToken: {
+      type: String,
+      default: null,
+    },
+
+    emailTokenExpires: {
+      type: Date,
+      default: null,
+    },
+
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
     },
   },
   {
     timestamps: true,
   }
 );
+
 
 module.exports = mongoose.model("User", userSchema);
