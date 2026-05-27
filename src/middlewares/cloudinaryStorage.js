@@ -1,15 +1,18 @@
-const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary");
+const streamifier = require("streamifier");
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "grievance_portal",
-    allowed_formats: ["jpg", "png", "jpeg"],
-  },
-});
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "grievance_portal" },
+      (error, result) => {
+        if (result) resolve(result);
+        else reject(error);
+      }
+    );
 
-const upload = multer({ storage });
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
 
-module.exports = upload;
+module.exports = uploadToCloudinary;

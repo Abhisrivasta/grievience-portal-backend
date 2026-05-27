@@ -9,25 +9,24 @@ const {
 } = require("../services/notificationService");
 
 
-// create compalaints
 const createComplaint = async (req, res, next) => {
   try {
     const { title, description, category, area, latitude, longitude } = req.body;
-
+ 
     if (!title?.trim() || !description?.trim() || !category?.trim() || !area?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Title, description, category and area are required",
       });
     }
-
+ 
     let imageUrl = null;
-
+ 
     if (req.file) {
       const result = await uploadToCloudinary(req.file.buffer);
       imageUrl = result.secure_url;
     }
-
+ 
     const complaint = await Complaint.create({
       title: title.trim(),
       description: description.trim(),
@@ -47,7 +46,7 @@ const createComplaint = async (req, res, next) => {
         },
       ],
     });
-
+ 
     return res.status(201).json({
       success: true,
       message: "Complaint created successfully",
@@ -57,11 +56,13 @@ const createComplaint = async (req, res, next) => {
         image: complaint.image,
       },
     });
-
+ 
   } catch (error) {
     next(error);
   }
 };
+ 
+
 // getMyComplaints 
 const getMyComplaints = async (req, res, next) => {
   try {
@@ -477,73 +478,68 @@ const getComplaintForOfficer = async (req, res, next) => {
   }
 };
 
-//update complaint
 const updateComplaint = async (req, res, next) => {
   try {
     const { title, description, category, area, latitude, longitude } = req.body;
     const complaintId = req.params.id;
-
+ 
     const complaint = await Complaint.findById(complaintId);
-
+ 
     if (!complaint) {
       return res.status(404).json({
         success: false,
         message: "Complaint not found",
       });
     }
-
+ 
     if (complaint.citizen.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: "Not authorized",
       });
     }
-
+ 
     if (complaint.status !== "Pending") {
       return res.status(400).json({
         success: false,
         message: `Cannot update. Status is ${complaint.status}`,
       });
     }
-
-    let imageUrl = complaint.image;
-
+ 
+    // ✅ Only upload new image if a file was sent, otherwise keep existing
     if (req.file) {
       const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.secure_url;
+      complaint.image = result.secure_url;
     }
-
+ 
     if (title?.trim()) complaint.title = title.trim();
     if (description?.trim()) complaint.description = description.trim();
     if (category?.trim()) complaint.category = category.trim();
-
-    complaint.image = imageUrl;
-
+ 
     complaint.location = {
       area: area?.trim() || complaint.location.area,
       latitude: latitude ? Number(latitude) : complaint.location.latitude,
       longitude: longitude ? Number(longitude) : complaint.location.longitude,
     };
-
+ 
     complaint.timeline.push({
       status: "Pending",
       remark: "Complaint updated by citizen",
       updatedBy: "Citizen",
     });
-
+ 
     const updatedComplaint = await complaint.save();
-
+ 
     return res.status(200).json({
       success: true,
       message: "Complaint updated successfully",
       data: updatedComplaint,
     });
-
+ 
   } catch (error) {
     next(error);
   }
 };
-
 
 module.exports = {
   createComplaint,
