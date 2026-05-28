@@ -6,7 +6,6 @@ const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const uploadToCloudinary = require("../utils/cloudinaryUpload");
 
-// ================= COMMON RESPONSE =================
 const sendResponse = (res, status, message, data = {}) => {
   return res.status(status).json({
     success: status >= 200 && status < 300,
@@ -15,8 +14,8 @@ const sendResponse = (res, status, message, data = {}) => {
   });
 };
 
-// ================= COMMON USER SHAPE =================
-// ✅ Single helper — every endpoint returns identical user object
+const normalizeEmail = (email) => email?.toLowerCase().trim();
+
 const formatUser = (user) => ({
   id: user._id,
   name: user.name,
@@ -27,16 +26,12 @@ const formatUser = (user) => ({
   createdAt: user.createdAt,
 });
 
-// ================= JWT TOKEN =================
 const generateToken = (user) => {
-  return jwt.sign(
-    { id: user._id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+  return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
 };
 
-// ================= GOOGLE LOGIN =================
 const googleLogin = async (req, res, next) => {
   try {
     const { idToken } = req.body;
@@ -47,12 +42,11 @@ const googleLogin = async (req, res, next) => {
 
     const decoded = await admin.auth().verifyIdToken(idToken);
 
-    if (!decoded || !decoded.email) {
+    if (!decoded?.email) {
       return sendResponse(res, 401, "Invalid Firebase token");
     }
 
-    const { email, name, picture } = decoded;
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(decoded.email);
 
     let user = await User.findOne({ email: cleanEmail });
 
@@ -61,11 +55,12 @@ const googleLogin = async (req, res, next) => {
         Math.random().toString(36).slice(-8),
         10
       );
+
       user = await User.create({
-        name: name || "Google User",
+        name: decoded.name || "Google User",
         email: cleanEmail,
         password: randomPassword,
-        profilePhoto: picture || null,
+        profilePhoto: decoded.picture || null,
         location: {},
         isVerified: true,
       });
@@ -75,15 +70,14 @@ const googleLogin = async (req, res, next) => {
 
     return sendResponse(res, 200, "Google login successful", {
       token,
-      user: formatUser(user), // ✅ consistent shape
+      user: formatUser(user),
     });
   } catch (err) {
-    console.error("❌ Google Login Error:", err.message);
+    console.error("Google Login Error:", err.message);
     return sendResponse(res, 401, "Google login failed");
   }
 };
 
-// ================= REGISTER =================
 const registerUser = async (req, res, next) => {
   try {
     let { name, email, password, location } = req.body;
@@ -92,21 +86,28 @@ const registerUser = async (req, res, next) => {
       return sendResponse(res, 400, "All fields are required");
     }
 
-    email = email.toLowerCase().trim();
+    name = name.trim();
+    email = normalizeEmail(email);
 
-    const exists = await User.findOne({ email });
-    if (exists) {
-      return sendResponse(res, 400, "User already exists");
+    if (!name || !email) {
+      return sendResponse(res, 400, "Name and email are required");
     }
 
     if (password.length < 6) {
       return sendResponse(res, 400, "Password must be at least 6 characters");
     }
 
+    const exists = await User.exists({ email });
+    if (exists) {
+      return sendResponse(res, 400, "User already exists");
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-    const tokenExpiry = Date.now() + 3600000;
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
 
     const verifyUrl = `${process.env.SERVER_URL}/api/auth/verify/${rawToken}`;
 
@@ -118,8 +119,12 @@ const registerUser = async (req, res, next) => {
          <a href="${verifyUrl}">${verifyUrl}</a>`
       );
     } catch (emailError) {
-      console.error("❌ Email failed to send:", emailError.message);
-      return sendResponse(res, 500, "Failed to send verification email. Please try again.");
+      console.error("Email failed to send:", emailError.message);
+      return sendResponse(
+        res,
+        500,
+        "Failed to send verification email. Please try again."
+      );
     }
 
     await User.create({
@@ -129,16 +134,19 @@ const registerUser = async (req, res, next) => {
       location: location || {},
       isVerified: false,
       emailToken: hashedToken,
-      emailTokenExpires: tokenExpiry,
+      emailTokenExpires: Date.now() + 60 * 60 * 1000,
     });
 
-    return sendResponse(res, 201, "Registered successfully. Please verify your email.");
+    return sendResponse(
+      res,
+      201,
+      "Registered successfully. Please verify your email."
+    );
   } catch (err) {
     next(err);
   }
 };
 
-// ================= VERIFY EMAIL =================
 const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -160,15 +168,14 @@ const verifyEmail = async (req, res) => {
 
     return res.redirect(`${process.env.CLIENT_URL}/email-verified`);
   } catch (error) {
-    console.error("❌ Verification Error:", error);
+    console.error("Verification Error:", error);
     return res.redirect(`${process.env.CLIENT_URL}/verify-failed`);
   }
 };
 
-// ================= RESEND VERIFICATION =================
 const resendVerificationEmail = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     if (!email) return sendResponse(res, 400, "Email is required");
 
@@ -177,14 +184,20 @@ const resendVerificationEmail = async (req, res) => {
     if (user.isVerified) return sendResponse(res, 400, "User already verified");
 
     const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
 
     user.emailToken = hashedToken;
     user.emailTokenExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     const verifyUrl = `${process.env.SERVER_URL}/api/auth/verify/${rawToken}`;
-    await sendEmail(email, "Resend Verification",
+
+    await sendEmail(
+      email,
+      "Resend Verification",
       `<h3>Click below to verify your email:</h3>
        <a href="${verifyUrl}">${verifyUrl}</a>`
     );
@@ -196,18 +209,19 @@ const resendVerificationEmail = async (req, res) => {
   }
 };
 
-// ================= LOGIN =================
 const loginUser = async (req, res, next) => {
   try {
     let { email, password } = req.body;
+
+    email = normalizeEmail(email);
 
     if (!email || !password) {
       return sendResponse(res, 400, "Email and password required");
     }
 
-    email = email.toLowerCase().trim();
-
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email }).select(
+      "+password name email role location profilePhoto createdAt isVerified"
+    );
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return sendResponse(res, 401, "Invalid credentials");
@@ -221,21 +235,21 @@ const loginUser = async (req, res, next) => {
 
     return sendResponse(res, 200, "Login successful", {
       token,
-      user: formatUser(user), // ✅ now includes location, profilePhoto, createdAt
+      user: formatUser(user),
     });
   } catch (err) {
     next(err);
   }
 };
 
-// ================= GET PROFILE =================
 const getUserProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id)
+      .select("name email role location profilePhoto createdAt")
+      .lean();
 
     if (!user) return sendResponse(res, 404, "User not found");
 
-    // ✅ FIX: wrapped in { user: } so AuthContext reads it same as updateProfile
     return sendResponse(res, 200, "Profile fetched", {
       user: formatUser(user),
     });
@@ -244,7 +258,6 @@ const getUserProfile = async (req, res, next) => {
   }
 };
 
-// ================= UPDATE PROFILE =================
 const updateProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
@@ -252,6 +265,8 @@ const updateProfile = async (req, res, next) => {
     if (!user) return sendResponse(res, 404, "User not found");
 
     const { name, state, city, ward } = req.body;
+
+    if (!user.location) user.location = {};
 
     if (name?.trim()) user.name = name.trim();
     if (state?.trim()) user.location.state = state.trim();
@@ -267,31 +282,37 @@ const updateProfile = async (req, res, next) => {
     const updated = await user.save();
 
     return sendResponse(res, 200, "Profile updated", {
-      user: formatUser(updated), // ✅ consistent shape
+      user: formatUser(updated),
     });
   } catch (err) {
     next(err);
   }
 };
 
-// ================= FORGOT PASSWORD =================
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
+
     if (!email) return sendResponse(res, 400, "Email is required");
 
     const user = await User.findOne({ email });
     if (!user) return sendResponse(res, 404, "User not found");
 
     const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
 
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
-    await sendEmail(email, "Reset Password",
+
+    await sendEmail(
+      email,
+      "Reset Password",
       `<h3>Click to reset password:</h3>
        <a href="${resetUrl}">${resetUrl}</a>`
     );
@@ -303,7 +324,6 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// ================= RESET PASSWORD =================
 const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;

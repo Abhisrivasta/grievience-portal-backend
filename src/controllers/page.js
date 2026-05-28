@@ -1,5 +1,25 @@
 const HomePage = require("../models/Page");
 
+const DEFAULT_HOME_PAGE = {
+  title: "",
+  description: "",
+  contents: "",
+  features: [],
+  stats: [],
+  ctaText: "",
+  ctaSubText: "",
+};
+
+let homeCache = null;
+let homeCacheTime = 0;
+
+const HOME_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+const normalizeHomePage = (home) => ({
+  ...DEFAULT_HOME_PAGE,
+  ...(home || {}),
+});
+
 // ✅ UPSERT (Create or Update Homepage)
 const upsertHomePage = async (req, res, next) => {
   try {
@@ -20,38 +40,37 @@ const upsertHomePage = async (req, res, next) => {
       });
     }
 
-    let home = await HomePage.findOne();
+    const payload = {
+      title,
+      description,
+      contents,
+      features: features || [],
+      stats: stats || [],
+      ctaText,
+      ctaSubText,
+    };
 
-    if (home) {
-      home = await HomePage.findByIdAndUpdate(
-        home._id,
-        {
-          title,
-          description,
-          contents,
-          features: features || [],
-          stats: stats || [],
-          ctaText,
-          ctaSubText,
-        },
-        { new: true }
-      );
-    } else {
-      home = await HomePage.create({
-        title,
-        description,
-        contents,
-        features: features || [],
-        stats: stats || [],
-        ctaText,
-        ctaSubText,
+    const existingHome = await HomePage.findOne().select("_id").lean();
+
+    let home;
+
+    if (existingHome) {
+      home = await HomePage.findByIdAndUpdate(existingHome._id, payload, {
+        new: true,
+        lean: true,
       });
+    } else {
+      const createdHome = await HomePage.create(payload);
+      home = createdHome.toObject();
     }
 
-    res.status(200).json({
+    homeCache = normalizeHomePage(home);
+    homeCacheTime = Date.now();
+
+    return res.status(200).json({
       success: true,
       message: "Home page saved successfully",
-      data: home,
+      data: homeCache,
     });
   } catch (error) {
     next(error);
@@ -60,19 +79,25 @@ const upsertHomePage = async (req, res, next) => {
 
 const getHomePage = async (req, res, next) => {
   try {
-    const home = await HomePage.findOne();
+    const now = Date.now();
 
-    res.status(200).json({
+    if (homeCache && now - homeCacheTime < HOME_CACHE_DURATION) {
+      return res.status(200).json({
+        success: true,
+        data: homeCache,
+        cached: true,
+      });
+    }
+
+    const home = await HomePage.findOne().lean();
+
+    homeCache = normalizeHomePage(home);
+    homeCacheTime = now;
+
+    return res.status(200).json({
       success: true,
-      data: home || {
-        title: "",
-        description: "",
-        contents: "",
-        features: [],
-        stats: [],
-        ctaText: "",
-        ctaSubText: "",
-      },
+      data: homeCache,
+      cached: false,
     });
   } catch (error) {
     next(error);

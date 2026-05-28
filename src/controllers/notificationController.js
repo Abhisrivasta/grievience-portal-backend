@@ -1,18 +1,44 @@
-const User = require("../models/User"); // make sure this is imported
+const User = require("../models/User");
 const Notification = require("../models/Notification");
 
+const getPagination = (query, defaultLimit = 20) => {
+  const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
+  const limit = Math.min(
+    Math.max(Number.parseInt(query.limit, 10) || defaultLimit, 1),
+    50
+  );
+
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit,
+  };
+};
 
 const getMyNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({
-      user: req.user.id,
-    })
-      .sort({ isRead: 1, createdAt: -1 })
-      .populate("relatedComplaint", "title status");
+    const { page, limit, skip } = getPagination(req.query);
 
-    res.status(200).json({
+    const filter = {
+      user: req.user.id,
+    };
+
+    const [notifications, total] = await Promise.all([
+      Notification.find(filter)
+        .sort({ isRead: 1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("relatedComplaint", "title status")
+        .lean(),
+      Notification.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
       success: true,
       count: notifications.length,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
       data: notifications,
     });
   } catch (error) {
@@ -22,30 +48,23 @@ const getMyNotifications = async (req, res, next) => {
 
 const markNotificationAsRead = async (req, res, next) => {
   try {
-    const notification = await Notification.findById(
-      req.params.id
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        user: req.user.id,
+      },
+      { $set: { isRead: true } },
+      { new: true, select: "_id isRead", lean: true }
     );
 
     if (!notification) {
-      res.status(404);
-      throw new Error("Notification not found");
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or not authorized",
+      });
     }
 
-    // Ownership check
-    if (
-      notification.user.toString() !==
-      req.user.id
-    ) {
-      res.status(403);
-      throw new Error(
-        "You are not authorized to modify this notification"
-      );
-    }
-
-    notification.isRead = true;
-    await notification.save();
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Notification marked as read",
     });
@@ -54,21 +73,14 @@ const markNotificationAsRead = async (req, res, next) => {
   }
 };
 
-//get unread notification count
-
-const getUnreadNotificationCount = async (
-  req,
-  res,
-  next
-) => {
+const getUnreadNotificationCount = async (req, res, next) => {
   try {
-    const count =
-      await Notification.countDocuments({
-        user: req.user.id,
-        isRead: false,
-      });
+    const count = await Notification.countDocuments({
+      user: req.user.id,
+      isRead: false,
+    });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count,
     });
@@ -77,44 +89,39 @@ const getUnreadNotificationCount = async (
   }
 };
 
-
 const sendBulkNotification = async (req, res, next) => {
   try {
     const { target, departmentId, message } = req.body;
 
-    if (!message) {
-      res.status(400);
-      throw new Error("Message is required");
+    if (!message?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required",
+      });
     }
 
-    let users = [];
-
-    // Decide target users
-    if (target === "all") {
-      users = await User.find({}, "_id");
-    }
+    const filter = {};
 
     if (target === "officers") {
-      users = await User.find(
-        { role: "officer" },
-        "_id"
-      );
-    }
-
-    if (target === "department") {
+      filter.role = "officer";
+    } else if (target === "department") {
       if (!departmentId) {
-        res.status(400);
-        throw new Error("Department is required");
+        return res.status(400).json({
+          success: false,
+          message: "Department is required",
+        });
       }
 
-      users = await User.find(
-        {
-          role: "officer",
-          department: departmentId,
-        },
-        "_id"
-      );
+      filter.role = "officer";
+      filter.department = departmentId;
+    } else if (target !== "all") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid target",
+      });
     }
+
+    const users = await User.find(filter).select("_id").lean();
 
     if (!users.length) {
       return res.status(200).json({
@@ -123,17 +130,15 @@ const sendBulkNotification = async (req, res, next) => {
       });
     }
 
-    // Prepare notifications
     const notifications = users.map((user) => ({
       user: user._id,
-      message,
+      message: message.trim(),
       isRead: false,
     }));
 
-    // Bulk insert
-    await Notification.insertMany(notifications);
+    await Notification.insertMany(notifications, { ordered: false });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       count: notifications.length,
       message: "Bulk notification sent successfully",
@@ -143,35 +148,34 @@ const sendBulkNotification = async (req, res, next) => {
   }
 };
 
-
-
-
 const sendSingleNotification = async (req, res, next) => {
   try {
     const { userId, message, type = "info", complaintId } = req.body;
 
-    // Validation
-    if (!userId || !message) {
-      res.status(400);
-      throw new Error("userId and message are required");
+    if (!userId || !message?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and message are required",
+      });
     }
 
-    // Check user exists
-    const user = await User.findById(userId);
-    if (!user) {
-      res.status(404);
-      throw new Error("User not found");
+    const userExists = await User.exists({ _id: userId });
+
+    if (!userExists) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    // Create notification
     const notification = await Notification.create({
       user: userId,
-      message,
+      message: message.trim(),
       type,
       relatedComplaint: complaintId || null,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Notification sent successfully",
       data: notification,
@@ -181,35 +185,28 @@ const sendSingleNotification = async (req, res, next) => {
   }
 };
 
-
 const deleteNotification = async (req, res, next) => {
   try {
-    const notification = await Notification.findById(req.params.id);
+    const notification = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user.id,
+    }).lean();
 
     if (!notification) {
-      res.status(404);
-      throw new Error("Notification not found");
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or not authorized",
+      });
     }
 
-    // 🔒 Ownership check (VERY IMPORTANT)
-    if (notification.user.toString() !== req.user.id) {
-      res.status(403);
-      throw new Error("Not authorized to delete this notification");
-    }
-
-    await notification.deleteOne();
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Notification deleted successfully",
     });
-
   } catch (error) {
     next(error);
   }
 };
-
-
 
 module.exports = {
   getMyNotifications,
@@ -217,5 +214,5 @@ module.exports = {
   getUnreadNotificationCount,
   sendBulkNotification,
   sendSingleNotification,
-  deleteNotification
+  deleteNotification,
 };

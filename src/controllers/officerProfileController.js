@@ -3,11 +3,6 @@ const User = require("../models/User");
 const Department = require("../models/Department");
 
 
-/**
- * @desc    Create or update officer profile
- * @route   POST /api/officers/profile
- * @access  Private (Admin)
- */
 const upsertOfficerProfile = async (req, res, next) => {
   try {
     const {
@@ -20,55 +15,65 @@ const upsertOfficerProfile = async (req, res, next) => {
     } = req.body;
 
     if (!officerId || !department) {
-      res.status(400);
-      throw new Error(
-        "Officer ID and Department are required"
-      );
-    }
-
-    // Validate officer user
-    const officer = await User.findById(officerId);
-    if (!officer || officer.role !== "officer") {
-      res.status(400);
-      throw new Error("Invalid officer selected");
-    }
-
-    // Validate department
-    const dept = await Department.findById(department);
-    if (!dept || !dept.isActive) {
-      res.status(400);
-      throw new Error("Invalid department");
-    }
-
-    let profile = await OfficerProfile.findOne({
-      officer: officerId,
-    });
-
-    if (profile) {
-      // Update existing profile
-      if (department) profile.department = department;
-      if (designation)
-        profile.designation = designation;
-      if (phone) profile.phone = phone;
-      if (maxActiveComplaints !== undefined)
-        profile.maxActiveComplaints =
-          maxActiveComplaints;
-      if (typeof isActive === "boolean")
-        profile.isActive = isActive;
-    } else {
-      // Create new profile
-      profile = await OfficerProfile.create({
-        officer: officerId,
-        department,
-        designation,
-        phone,
-        maxActiveComplaints,
-        isActive,
+      return res.status(400).json({
+        success: false,
+        message: "Officer ID and Department are required",
       });
     }
-    await profile.save();
 
-    res.status(200).json({
+    const [officer, dept] = await Promise.all([
+      User.findOne({ _id: officerId, role: "officer" })
+        .select("name role")
+        .lean(),
+      Department.findOne({ _id: department, isActive: true })
+        .select("name")
+        .lean(),
+    ]);
+
+    if (!officer) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid officer selected",
+      });
+    }
+
+    if (!dept) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid department",
+      });
+    }
+
+    const update = {
+      department,
+    };
+
+    if (designation?.trim()) update.designation = designation.trim();
+    if (phone?.trim()) update.phone = phone.trim();
+
+    if (maxActiveComplaints !== undefined) {
+      update.maxActiveComplaints = Number(maxActiveComplaints);
+    }
+
+    if (typeof isActive === "boolean") {
+      update.isActive = isActive;
+    }
+
+    const profile = await OfficerProfile.findOneAndUpdate(
+      { officer: officerId },
+      {
+        $set: update,
+        $setOnInsert: { officer: officerId },
+      },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+        lean: true,
+      }
+    );
+
+    return res.status(200).json({
       success: true,
       message: "Officer profile saved successfully",
       data: {
@@ -83,42 +88,40 @@ const upsertOfficerProfile = async (req, res, next) => {
 };
 
 
-/**
- * @desc    Get list of officers with profiles
- * @route   GET /api/officers
- * @access  Private (Admin)
- */
 const getOfficersWithProfiles = async (req, res, next) => {
   try {
-    const officers = await User.find({
-      role: "officer",
-    })
+    const officers = await User.find({ role: "officer" })
       .select("name email isActive")
+      .sort({ createdAt: -1 })
       .lean();
 
-    const officerIds = officers.map(
-      (o) => o._id
-    );
+    if (!officers.length) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
+
+    const officerIds = officers.map((officer) => officer._id);
 
     const profiles = await OfficerProfile.find({
       officer: { $in: officerIds },
     })
+      .select("officer department designation phone maxActiveComplaints isActive")
       .populate("department", "name")
       .lean();
 
-    const profileMap = {};
-    profiles.forEach((p) => {
-      profileMap[p.officer.toString()] = p;
-    });
+    const profileMap = new Map(
+      profiles.map((profile) => [profile.officer.toString(), profile])
+    );
 
     const result = officers.map((officer) => ({
       ...officer,
-      profile:
-        profileMap[officer._id.toString()] ||
-        null,
+      profile: profileMap.get(officer._id.toString()) || null,
     }));
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: result.length,
       data: result,
@@ -128,8 +131,7 @@ const getOfficersWithProfiles = async (req, res, next) => {
   }
 };
 
-
 module.exports = {
   upsertOfficerProfile,
-  getOfficersWithProfiles
+  getOfficersWithProfiles,
 };
