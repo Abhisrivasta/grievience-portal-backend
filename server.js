@@ -72,6 +72,11 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", timestamp: new Date() });
 });
 
+app.get('/ping', (req, res) => {
+    res.status(200).send("Server is awake!");
+});
+
+
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
